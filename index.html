@@ -211,27 +211,8 @@
 
 					<!-- ── Crew (Guests) Tab ── -->
 					<section class="tab-panel" data-panel="sources">
-						<div class="panel-heading">
-							<h2>Crew &amp; Guests</h2>
-							<div class="guest-actions">
-								<button type="button" id="toggle-join-sound" class="button button--secondary button--compact" aria-pressed="false">Sound Off</button>
-								<button type="button" id="add-samples" class="button button--secondary button--compact">Samples</button>
-								<button type="button" id="add-placeholder" class="icon-button" title="Add guest slot" aria-label="Add guest slot"><i class="las la-plus-square"></i></button>
-							</div>
-						</div>
-
-						<!-- Markus AI card -->
-						<div class="crew-card crew-card--ai">
-							<div class="crew-card__header">
-								<div class="crew-card__avatar crew-card__avatar--ai">MC</div>
-								<div class="crew-card__info">
-									<strong>Markus</strong>
-									<span class="crew-card__role">AI Crew · <span class="ai-status" id="markus-status">Standby</span></span>
-								</div>
-								<span class="crew-card__badge">AI</span>
-							</div>
-						</div>
-
+						<!-- Room -->
+						<div class="panel-heading"><h2>Room</h2></div>
 						<label class="field-row field-row--stacked invite-card">
 							<span>Guest invite</span>
 							<div class="copy-row">
@@ -246,6 +227,26 @@
 								<button type="button" class="icon-button" id="copy-password" title="Copy room password" aria-label="Copy room password"><i class="las la-key"></i></button>
 							</div>
 						</label>
+
+						<!-- Crew & Guests -->
+						<div class="panel-heading panel-heading--section">
+							<h2>Crew &amp; Guests</h2>
+							<div class="guest-actions">
+								<button type="button" id="toggle-join-sound" class="button button--secondary button--compact" aria-pressed="false">Sound Off</button>
+								<button type="button" id="add-samples" class="button button--secondary button--compact">Samples</button>
+								<button type="button" id="add-placeholder" class="icon-button" title="Add guest slot" aria-label="Add guest slot"><i class="las la-plus-square"></i></button>
+							</div>
+						</div>
+						<div class="crew-card crew-card--ai">
+							<div class="crew-card__header">
+								<div class="crew-card__avatar crew-card__avatar--ai">MC</div>
+								<div class="crew-card__info">
+									<strong>Markus</strong>
+									<span class="crew-card__role">AI Crew · <span class="ai-status" id="markus-status">Standby</span></span>
+								</div>
+								<span class="crew-card__badge">AI</span>
+							</div>
+						</div>
 						<div id="source-list" class="source-list" aria-live="polite"></div>
 					</section>
 
@@ -531,5 +532,33 @@
 		<script type="module" src="./app.js"></script>
 		<!-- Convention-level host badge (single host, hand-off, Greg->RJ->RAFA succession) -->
 		<script src="./host.js" defer></script>
-	</body>
+	<script>
+/* Console nest: collapsible left/right sidebars, state persisted in localStorage. */
+(function(){
+  function ready(fn){document.readyState!=='loading'?fn():document.addEventListener('DOMContentLoaded',fn);}
+  ready(function(){
+    var ws=document.querySelector('.studio-workspace'); if(!ws) return;
+    var cL='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
+    var cR='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
+    function setup(side,sel,label){
+      var p=document.querySelector(sel); if(!p) return;
+      var key='raw.ui.'+side;
+      function set(c){ws.setAttribute('data-'+side,c?'collapsed':'expanded');try{localStorage.setItem(key,c?'1':'0');}catch(e){}}
+      var t=document.createElement('button');t.type='button';t.className='raw-collapse raw-collapse--'+side;
+      t.setAttribute('aria-label','Collapse '+label);t.innerHTML=(side==='left'?cL:cR);t.onclick=function(){set(true);};p.appendChild(t);
+      var rail=document.createElement('div');rail.className='raw-rail';
+      var rb=document.createElement('button');rb.type='button';rb.className='raw-rail__btn';
+      rb.setAttribute('aria-label','Expand '+label);rb.innerHTML=(side==='left'?cR:cL);rb.onclick=function(){set(false);};
+      var rl=document.createElement('div');rl.className='raw-rail__label';rl.textContent=label;
+      rail.appendChild(rb);rail.appendChild(rl);p.appendChild(rail);
+      var saved;try{saved=localStorage.getItem(key);}catch(e){}
+      ws.setAttribute('data-'+side,saved==='1'?'collapsed':'expanded');
+    }
+    setup('left','.scenes-panel','Scenes');
+    setup('right','.control-panel','Controls');
+  });
+})();
+</script>
+
+</body>
 </html>

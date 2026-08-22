@@ -1868,3 +1868,34 @@ button {
 /* — breathing room — */
 .panel-heading{ padding:16px 18px 12px; }
 .scene-name-input{ font-size:16px; }
+
+/* — right panel: grouped sections — */
+.panel-heading--section{ margin-top:8px; border-top:1px solid var(--line); padding-top:16px; }
+
+/* ============================================================
+   CONSOLE NEST LAYER — collapsible left/right sidebars
+   Adds a seam handle to each sidebar; collapses to a thin
+   labeled rail so the stage can breathe. State persisted.
+   ============================================================ */
+.scenes-panel,.control-panel{position:relative;}
+.raw-collapse{position:absolute;top:50%;transform:translateY(-50%);z-index:30;width:18px;height:46px;
+  display:grid;place-items:center;background:var(--panel-2,#1a1917);border:1px solid var(--line,rgba(255,255,255,.08));
+  color:var(--smoke,#948B7E);cursor:pointer;border-radius:6px;transition:color .15s,background .15s;padding:0;}
+.raw-collapse:hover{color:var(--offwhite,#E6DFD2);background:var(--panel,#141312);}
+.raw-collapse svg{width:11px;height:11px;display:block;}
+.raw-collapse--left{right:0;border-top-right-radius:0;border-bottom-right-radius:0;border-right:0;}
+.raw-collapse--right{left:0;border-top-left-radius:0;border-bottom-left-radius:0;border-left:0;}
+.raw-rail{display:none;}
+.studio-workspace[data-left="collapsed"]{grid-template-columns:40px minmax(520px,1fr) 320px;}
+.studio-workspace[data-right="collapsed"]{grid-template-columns:260px minmax(520px,1fr) 40px;}
+.studio-workspace[data-left="collapsed"][data-right="collapsed"]{grid-template-columns:40px 1fr 40px;}
+.studio-workspace[data-left="collapsed"] .scenes-panel>*:not(.raw-rail),
+.studio-workspace[data-right="collapsed"] .control-panel>*:not(.raw-rail){display:none!important;}
+.studio-workspace[data-left="collapsed"] .scenes-panel .raw-rail,
+.studio-workspace[data-right="collapsed"] .control-panel .raw-rail{display:flex;flex-direction:column;align-items:center;gap:16px;padding-top:14px;height:100%;}
+.raw-rail__btn{width:26px;height:40px;display:grid;place-items:center;cursor:pointer;background:var(--panel-2,#1a1917);
+  border:1px solid var(--line,rgba(255,255,255,.08));border-radius:6px;color:var(--bronze,#C6763B);padding:0;}
+.raw-rail__btn:hover{color:var(--offwhite,#E6DFD2);}
+.raw-rail__btn svg{width:12px;height:12px;display:block;}
+.raw-rail__label{writing-mode:vertical-rl;text-orientation:mixed;font-size:10px;letter-spacing:.3em;
+  text-transform:uppercase;color:var(--smoke,#948B7E);user-select:none;}
