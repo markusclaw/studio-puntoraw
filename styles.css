@@ -1899,3 +1899,17 @@ button {
 .raw-rail__btn svg{width:12px;height:12px;display:block;}
 .raw-rail__label{writing-mode:vertical-rl;text-orientation:mixed;font-size:10px;letter-spacing:.3em;
   text-transform:uppercase;color:var(--smoke,#948B7E);user-select:none;}
+
+/* ============================================================
+   LAYOUTS POPOVER — presets summoned from the toolbar instead
+   of an always-on bottom strip. The strip goes out of flow so
+   the stage reclaims the vertical space.
+   ============================================================ */
+.program-panel{position:relative;}
+.layout-strip{
+  position:absolute!important;z-index:45;top:60px;right:16px;bottom:auto!important;left:auto!important;
+  display:none!important;grid-template-columns:repeat(3,minmax(92px,1fr))!important;gap:6px!important;width:auto!important;
+  background:var(--panel,#141312);border:1px solid var(--line,rgba(255,255,255,.10));border-radius:12px;
+  padding:12px!important;box-shadow:0 20px 60px rgba(0,0,0,.6);}
+.program-panel[data-layouts="open"] .layout-strip{display:grid!important;}
+.raw-layouts-btn[aria-expanded="true"]{color:var(--offwhite,#E6DFD2)!important;background:var(--panel-2,#1a1917)!important;}

@@ -560,5 +560,41 @@
 })();
 </script>
 
+<script>
+/* Layouts popover: summon layout presets from a toolbar button instead of an always-on bottom strip. */
+(function(){
+  function ready(fn){document.readyState!=='loading'?fn():document.addEventListener('DOMContentLoaded',fn);}
+  ready(function(){
+    var panel=document.querySelector('.program-panel');
+    var strip=document.querySelector('.layout-strip');
+    var actions=document.querySelector('.program-toolbar__actions');
+    if(!panel||!strip||!actions) return;
+    var btn=document.createElement('button');
+    btn.type='button'; btn.className='button button--secondary raw-layouts-btn';
+    btn.setAttribute('aria-expanded','false'); btn.setAttribute('aria-label','Layout presets');
+    btn.innerHTML='<i class="las la-th-large" style="margin-right:6px"></i>Layouts';
+    actions.insertBefore(btn, actions.firstChild);
+    function place(){
+      var pr=panel.getBoundingClientRect(), br=btn.getBoundingClientRect();
+      strip.style.top=(br.bottom-pr.top+6)+'px';
+      var w=strip.offsetWidth||300, left=br.left-pr.left, max=pr.width-w-16;
+      if(left>max) left=max; if(left<16) left=16;
+      strip.style.left=left+'px'; strip.style.right='auto';
+    }
+    function open(v){
+      panel.setAttribute('data-layouts', v?'open':'closed');
+      btn.setAttribute('aria-expanded', v?'true':'false');
+      if(v) place();
+    }
+    open(false);
+    btn.addEventListener('click', function(e){ e.stopPropagation(); open(panel.getAttribute('data-layouts')!=='open'); });
+    strip.addEventListener('click', function(e){ if(e.target.closest('.layout-preset')) open(false); });
+    document.addEventListener('click', function(e){ if(panel.getAttribute('data-layouts')==='open' && !strip.contains(e.target) && !btn.contains(e.target)) open(false); });
+    document.addEventListener('keydown', function(e){ if(e.key==='Escape') open(false); });
+    window.addEventListener('resize', function(){ if(panel.getAttribute('data-layouts')==='open') place(); });
+  });
+})();
+</script>
+
 </body>
 </html>
