@@ -40,7 +40,7 @@ try {
 }
 
 const state = {
-	room: params.get("room") || params.get("r") || params.get("director") || params.get("dir") || "",
+	room: params.get("room") || params.get("r") || params.get("director") || params.get("dir") || "master_sessions_raw",
 	password: params.get("password") || params.get("pass") || params.get("pw") || "",
 	iframeReady: false,
 	sourceSnapshotReady: false,
