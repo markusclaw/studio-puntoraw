@@ -690,5 +690,30 @@
   });
 })();
 </script>
+<script>
+/* Refinement: dismiss a disconnected/ghost participant row instantly (clears lingering duplicate connections). */
+(function(){
+  function ready(fn){document.readyState!=='loading'?fn():document.addEventListener('DOMContentLoaded',fn);}
+  ready(function(){
+    var list=document.getElementById('source-list'); if(!list) return;
+    function decorate(){
+      var cards=list.querySelectorAll('.source-card[data-disconnected="true"]');
+      for(var i=0;i<cards.length;i++){
+        var card=cards[i];
+        var qb=card.querySelector('.raw-quickbar'); if(!qb) continue;
+        if(qb.querySelector('.raw-dismiss')) continue;
+        var id=card.dataset.sourceId; if(!id) continue;
+        var b=document.createElement('button');b.type='button';b.className='raw-dismiss';b.title='Dismiss dropped connection';b.setAttribute('aria-label','Dismiss dropped connection');b.innerHTML='<i class="las la-times"></i>';
+        (function(sid,cardEl){ b.addEventListener('click',function(e){ e.stopPropagation();
+          try{ if(window.studioApp&&window.studioApp.state&&window.studioApp.state.sources){ window.studioApp.state.sources.delete(sid); } }catch(err){}
+          cardEl.remove();
+        }); })(id,card);
+        qb.appendChild(b);
+      }
+    }
+    new MutationObserver(decorate).observe(list,{childList:true}); decorate();
+  });
+})();
+</script>
 </body>
 </html>

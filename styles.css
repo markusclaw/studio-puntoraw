@@ -2019,3 +2019,23 @@ body[data-transcript="on"] .raw-tr-live{display:inline-block}
 .scene-card{position:relative}
 .raw-scene-key{position:absolute;top:6px;right:6px;font-family:var(--mono,ui-monospace,monospace);font-size:9px;color:var(--smoke,#948B7E);background:rgba(0,0,0,.5);border:1px solid var(--line,rgba(255,255,255,.1));border-radius:4px;padding:1px 5px;letter-spacing:.05em;pointer-events:none}
 
+
+
+/* ============================================================
+   HEADER CONSOLIDATION + DISCONNECTED CLEANUP
+   Groups the topbar into identity / status / session clusters
+   (flex order + dividers, no DOM moves); dismiss for ghost rows.
+   ============================================================ */
+.topbar__status{gap:12px}
+.raw-host-badge{order:1}
+.raw-host-controls{order:2}
+#connection-status{order:3;padding-left:12px;border-left:1px solid var(--line)}
+#refresh-state{order:4;opacity:.6;transition:opacity .15s}
+#refresh-state:hover{opacity:1}
+.raw-session{order:5;padding-left:14px;border-left:1px solid var(--line);margin-left:0}
+/* disconnected / ghost participant rows */
+.source-card[data-disconnected="true"] .source-card__state{color:#ff8f84}
+.raw-dismiss{width:30px;height:28px;display:grid;place-items:center;border-radius:6px;cursor:pointer;background:transparent;border:1px solid rgba(224,72,59,.4);color:#ff8f84;padding:0}
+.raw-dismiss:hover{background:rgba(224,72,59,.12)}
+.raw-dismiss i{font-size:13px}
+
