@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>.RAW Sessions — Greenroom</title>
+<style>
+/* ============================================================
+   .RAW SESSIONS — Guest Greenroom
+   A branded waiting room. The guest's camera publishes to the
+   studio room (via the embedded VDO.Ninja publisher); the host
+   sees them "knocking" and admits them. State is driven by the
+   same Cloudflare Worker as the console.
+   ============================================================ */
+:root{
+  --bg:#0c0b0a; --panel:#141312; --panel-2:#1a1917; --hair:rgba(255,255,255,.06);
+  --text:#ECE7DD; --muted:#8f877b; --soft:#5f5a52;
+  --accent:#C6763B; --ember:#D2542A; --rec:#E0483B; --ok:#6f9c5a;
+  --mono:"SFMono-Regular",Menlo,Monaco,Consolas,"Liberation Mono",monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  background:var(--bg);color:var(--text);font-family:var(--mono);
+  background-image:
+    radial-gradient(ellipse 70% 50% at 30% 40%, rgba(198,118,59,.05) 0%, transparent 100%),
+    radial-gradient(ellipse 60% 50% at 75% 70%, rgba(214,65,43,.04) 0%, transparent 100%);
+  display:grid;place-items:center;min-height:100dvh;-webkit-font-smoothing:antialiased;
+}
+.wrap{width:min(760px,calc(100vw - 32px));display:grid;gap:18px}
+
+/* header */
+.head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{display:flex;align-items:center;gap:10px}
+.brand .dot{width:9px;height:9px;border-radius:50%;background:var(--rec);box-shadow:0 0 10px rgba(224,72,59,.5)}
+.brand .wm{font-size:16px;letter-spacing:.02em}
+.brand .wm .a{color:var(--accent)}
+.brand .sub{font-size:10px;letter-spacing:.3em;text-transform:uppercase;color:var(--muted);margin-top:3px}
+.who{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--soft)}
+.who b{color:var(--text)}
+
+/* camera */
+.cam{position:relative;aspect-ratio:16/9;border-radius:12px;overflow:hidden;background:#000;
+  border:1px solid var(--hair);box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.cam iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
+.cam .placeholder{position:absolute;inset:0;display:grid;place-items:center;color:var(--soft);font-size:12px;letter-spacing:.1em}
+
+/* status card */
+.status{display:flex;align-items:center;gap:14px;padding:16px 18px;border-radius:12px;background:var(--panel);border:1px solid var(--hair)}
+.status .pip{width:10px;height:10px;border-radius:50%;flex:0 0 auto;background:var(--soft)}
+.status .pip.wait{background:var(--accent);animation:pulse 1.6s ease-in-out infinite}
+.status .pip.live{background:var(--ok)}
+.status .pip.off{background:var(--soft)}
+@keyframes pulse{50%{opacity:.35}}
+.status .txt{display:flex;flex-direction:column;gap:3px;min-width:0}
+.status .t{font-size:14px;color:var(--text)}
+.status .s{font-size:11px;color:var(--muted);letter-spacing:.02em}
+.status[data-state="admitted"]{border-color:rgba(111,156,90,.35);background:rgba(111,156,90,.06)}
+.status[data-state="offline"]{opacity:.7}
+
+/* name prompt (fallback if no ?name) */
+.namecard{padding:20px;border-radius:12px;background:var(--panel);border:1px solid var(--hair);display:none}
+.namecard[data-show="true"]{display:block}
+.namecard label{display:block;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.namecard input{width:100%;background:var(--panel-2);border:0;border-radius:7px;color:var(--text);font-family:var(--mono);font-size:15px;padding:11px 12px;margin-bottom:12px}
+.namecard input:focus{outline:1px solid var(--accent)}
+.namecard button{width:100%;background:var(--accent);border:0;border-radius:7px;color:#1a120b;font-family:var(--mono);font-size:13px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;padding:12px;cursor:pointer}
+
+.foot{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);text-align:center}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div class="brand"><span class="dot"></span><div><div class="wm"><span class="a">.RAW</span> SESSIONS</div><div class="sub">Greenroom</div></div></div>
+    <div class="who" id="who"></div>
+  </div>
+
+  <!-- Name fallback (only if URL has no name) -->
+  <div class="namecard" id="namecard">
+    <label>Your name</label>
+    <input id="nameInput" type="text" maxlength="60" placeholder="e.g. Johnny" autocomplete="off" />
+    <button id="nameGo" type="button">Enter Greenroom</button>
+  </div>
+
+  <div id="stage" class="hidden">
+    <div class="cam" id="cam">
+      <div class="placeholder" id="camPlaceholder">Starting camera…</div>
+    </div>
+    <div class="status" id="status" data-state="connecting" style="margin-top:18px">
+      <span class="pip" id="pip"></span>
+      <div class="txt"><div class="t" id="statusT">Connecting…</div><div class="s" id="statusS">Reaching the studio</div></div>
+    </div>
+  </div>
+
+  <div class="foot">.RAW Sessions · you'll go live when the host brings you on</div>
+</div>
+
+<script>
+"use strict";
+const WORKER_URL = "wss://raw-studio-host.rovelo-ga.workers.dev";
+const VDO_BASE = "https://vdo.ninja";
+
+const params = new URLSearchParams(location.search);
+const ROOM = params.get("room") || "master_sessions_raw";
+const CLIENT_ID_KEY = "raw.host.clientId";
+
+function clientId(){
+  try{ let v=localStorage.getItem(CLIENT_ID_KEY);
+    if(!v){ v=(crypto&&crypto.randomUUID)?crypto.randomUUID():("c"+Date.now()+Math.floor(Math.random()*1e9)); localStorage.setItem(CLIENT_ID_KEY,v);} return v;
+  }catch(e){ return "c"+Date.now()+Math.floor(Math.random()*1e9); }
+}
+const ID = clientId();
+
+const els = {
+  who:document.getElementById("who"),
+  namecard:document.getElementById("namecard"),
+  nameInput:document.getElementById("nameInput"),
+  nameGo:document.getElementById("nameGo"),
+  stage:document.getElementById("stage"),
+  cam:document.getElementById("cam"),
+  camPh:document.getElementById("camPlaceholder"),
+  status:document.getElementById("status"),
+  pip:document.getElementById("pip"),
+  statusT:document.getElementById("statusT"),
+  statusS:document.getElementById("statusS"),
+};
+
+let NAME = (params.get("name")||"").trim().slice(0,60);
+let socket=null, connected=false, admitted=false, reconnectDelay=1000;
+
+function startCamera(){
+  // Embed the VDO.Ninja webcam publisher so the guest's camera reaches the room.
+  const src = `${VDO_BASE}/?room=${encodeURIComponent(ROOM)}&webcam&label=${encodeURIComponent(NAME)}&cleanoutput&autostart`;
+  const f = document.createElement("iframe");
+  f.allow = "camera; microphone; autoplay; fullscreen; display-capture";
+  f.src = src;
+  els.cam.appendChild(f);
+  els.camPh.classList.add("hidden");
+}
+
+function renderStatus(){
+  if(!connected){
+    els.status.dataset.state="offline"; els.pip.className="pip off";
+    els.statusT.textContent="Reconnecting…"; els.statusS.textContent="Lost the studio connection";
+    return;
+  }
+  if(admitted){
+    els.status.dataset.state="admitted"; els.pip.className="pip live";
+    els.statusT.textContent="You're in";
+    els.statusS.textContent="The host will bring you on air shortly. Sit tight.";
+  } else {
+    els.status.dataset.state="waiting"; els.pip.className="pip wait";
+    els.statusT.textContent="Waiting to be let in";
+    els.statusS.textContent="The host has been notified you're here.";
+  }
+}
+
+function connect(){
+  const q=new URLSearchParams({id:ID,name:NAME,code:""}); // no crew code → guest
+  try{ socket=new WebSocket(`${WORKER_URL.replace(/\/+$/,"")}/room/${encodeURIComponent(ROOM)}?${q}`); }
+  catch(e){ scheduleReconnect(); return; }
+  socket.addEventListener("open",()=>{ connected=true; reconnectDelay=1000; renderStatus(); });
+  socket.addEventListener("message",ev=>{
+    let m; try{m=JSON.parse(ev.data);}catch(e){return;}
+    if(m.type==="state"){
+      const me=(m.members||[]).find(x=>x.id===ID);
+      admitted = me ? !!me.admitted : false;
+      renderStatus();
+    }
+  });
+  socket.addEventListener("close",()=>{ connected=false; renderStatus(); scheduleReconnect(); });
+  socket.addEventListener("error",()=>{ try{socket.close();}catch(e){} });
+}
+let rt=null;
+function scheduleReconnect(){ clearTimeout(rt); rt=setTimeout(connect, reconnectDelay); reconnectDelay=Math.min(reconnectDelay*2,10000); }
+
+function begin(){
+  els.who.innerHTML = `You&nbsp;<b>${NAME.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}</b>`;
+  els.namecard.dataset.show="false";
+  els.stage.classList.remove("hidden");
+  startCamera();
+  connect();
+}
+
+if (NAME){
+  begin();
+} else {
+  els.namecard.dataset.show="true";
+  els.nameInput.focus();
+  const go=()=>{ const v=els.nameInput.value.trim().slice(0,60); if(!v) return; NAME=v; begin(); };
+  els.nameGo.addEventListener("click",go);
+  els.nameInput.addEventListener("keydown",e=>{ if(e.key==="Enter") go(); });
+}
+</script>
+</body>
+</html>
