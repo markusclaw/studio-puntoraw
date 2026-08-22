@@ -1,51 +1,59 @@
 /*
- * .RAW Sessions — Host Badge coordination Worker
+ * .RAW Sessions — Host Badge coordination Worker (universal identity)
  * ---------------------------------------------------------------------------
  * A Cloudflare Worker + Durable Object that holds the authoritative HOST badge
- * for each studio room and fans state out to every connected console over
- * WebSockets. This makes the host model server-enforced (not just cooperative):
- * the Durable Object is the single source of truth for who holds control.
+ * for each studio room and fans state to every connected console over
+ * WebSockets. Server-enforced: the Durable Object is the single source of
+ * truth for who holds control.
  *
- *   Client connects:  wss://<worker>/room/<ROOM>?id=<crewId>&name=<Name>[&key=<AUTH_KEY>]
+ * Universal identity:
+ *   - Everyone self-submits a display name; anyone can connect.
+ *   - A CREW CODE (server secret CREW_CODE) marks a connection as "crew".
+ *     Crew are host-eligible; everyone else is a "guest" (never host).
+ *     If CREW_CODE is not set, everyone is treated as crew (open mode).
+ *   - Succession is by SENIORITY: if the host drops, the earliest-joined crew
+ *     member still connected becomes host.
  *
- *   Client -> server messages (JSON):
- *     { "type": "claim" }               take control (must be eligible)
- *     { "type": "pass", "target": id }  hand off (only the current host may)
- *     { "type": "ping" }                keepalive (optional)
+ *   Connect:  wss://<worker>/room/<ROOM>?id=<clientId>&name=<Name>&code=<crewCode>
  *
- *   Server -> client messages (JSON):
- *     { "type": "state", "badge": {hostId,term,updatedAt}, "present": [ids] }
+ *   Client -> server:
+ *     { "type": "claim" }               take control (crew only)
+ *     { "type": "pass", "target": id }  hand off (current host only)
+ *     { "type": "ping" }
+ *
+ *   Server -> client:
+ *     { "type":"state", "badge":{hostId,term,updatedAt},
+ *       "members":[{id,name,role}] }     // role: "crew" | "guest"
  *     { "type": "pong" }
- *
- * Presence is derived from live WebSocket connections — no heartbeats needed.
- * When the host's connection drops, the badge auto-passes to the lowest-rank
- * crew member still connected (Greg -> RJ -> RAFA).
  */
 
 import { DurableObject } from "cloudflare:workers";
 
-/* ---- Crew roster + ranked succession order (server is the authority) ---- */
-const ROSTER = [
-	{ id: "greg", rank: 1 },
-	{ id: "rj",   rank: 2 },
-	{ id: "rafa", rank: 3 }
-];
-function rankOf(id) {
-	const m = ROSTER.find(x => x.id === id);
-	return m ? m.rank : Infinity;
-}
-function isEligible(id) {
-	return rankOf(id) !== Infinity;
-}
-
 export class RawStudioRoom extends DurableObject {
 	constructor(ctx, env) {
 		super(ctx, env);
+		this.env = env;
 		this.badge = { hostId: null, term: 0, updatedAt: 0 };
+		this.admitted = new Set();   // guest ids the host has let in
 		ctx.blockConcurrencyWhile(async () => {
 			const saved = await ctx.storage.get("badge");
 			if (saved) this.badge = saved;
+			const adm = await ctx.storage.get("admitted");
+			if (Array.isArray(adm)) this.admitted = new Set(adm);
 		});
+	}
+
+	async saveAdmitted() {
+		await this.ctx.storage.put("admitted", [...this.admitted]);
+	}
+	isAdmitted(id, role) {
+		return role === "crew" ? true : this.admitted.has(id);
+	}
+
+	// Crew if no code is configured (open mode) or the supplied code matches.
+	roleFor(code) {
+		const required = this.env.CREW_CODE;
+		return (!required || code === required) ? "crew" : "guest";
 	}
 
 	async fetch(request) {
@@ -53,15 +61,17 @@ export class RawStudioRoom extends DurableObject {
 			return new Response("Expected WebSocket", { status: 426 });
 		}
 		const url = new URL(request.url);
-		const id = (url.searchParams.get("id") || "").slice(0, 40);
-		const name = (url.searchParams.get("name") || id).slice(0, 40);
+		const id = (url.searchParams.get("id") || "").slice(0, 64);
+		const name = ((url.searchParams.get("name") || "").trim() || "Guest").slice(0, 60);
+		const role = this.roleFor(url.searchParams.get("code") || "");
+		if (!id) return new Response("Missing id", { status: 400 });
 
 		const pair = new WebSocketPair();
 		const client = pair[0];
 		const server = pair[1];
 
 		this.ctx.acceptWebSocket(server);
-		server.serializeAttachment({ id, name });
+		server.serializeAttachment({ id, name, role, joinedAt: Date.now() });
 
 		this.sendTo(server, this.stateMsg());
 		await this.reconcile();
@@ -70,26 +80,38 @@ export class RawStudioRoom extends DurableObject {
 		return new Response(null, { status: 101, webSocket: client });
 	}
 
-	presentIds(exclude) {
-		const ids = new Set();
+	/* Deduped member list (by id): earliest joinedAt wins, crew role wins. */
+	members(exclude) {
+		const map = new Map();
 		for (const ws of this.ctx.getWebSockets()) {
 			if (ws === exclude) continue;
 			const a = ws.deserializeAttachment();
-			if (a && a.id) ids.add(a.id);
+			if (!a || !a.id) continue;
+			const prev = map.get(a.id);
+			if (!prev) {
+				map.set(a.id, { id: a.id, name: a.name, role: a.role, joinedAt: a.joinedAt, admitted: this.isAdmitted(a.id, a.role) });
+			} else {
+				prev.joinedAt = Math.min(prev.joinedAt, a.joinedAt);
+				if (a.role === "crew") { prev.role = "crew"; prev.admitted = true; }
+			}
 		}
-		return [...ids];
+		return [...map.values()];
+	}
+	presentCrew(exclude) {
+		return this.members(exclude)
+			.filter(m => m.role === "crew")
+			.sort((a, b) => a.joinedAt - b.joinedAt);
 	}
 	rightfulHost(exclude) {
-		let best = null, bestRank = Infinity;
-		for (const id of this.presentIds(exclude)) {
-			const r = rankOf(id);
-			if (r < bestRank) { bestRank = r; best = id; }
-		}
-		return best;
+		const crew = this.presentCrew(exclude);
+		return crew.length ? crew[0].id : null;
+	}
+	isCrewPresent(id, exclude) {
+		return this.presentCrew(exclude).some(m => m.id === id);
 	}
 
-	stateMsg() {
-		return { type: "state", badge: this.badge, present: this.presentIds() };
+	stateMsg(exclude) {
+		return { type: "state", badge: this.badge, members: this.members(exclude) };
 	}
 
 	async setBadge(hostId) {
@@ -97,10 +119,11 @@ export class RawStudioRoom extends DurableObject {
 		await this.ctx.storage.put("badge", this.badge);
 	}
 
+	/* Keep the badge valid: if the host is gone or not crew, pass to the
+	 * most-senior present crew member (or vacate). */
 	async reconcile(exclude) {
-		const present = this.presentIds(exclude);
-		const hostAlive = this.badge.hostId && isEligible(this.badge.hostId) && present.includes(this.badge.hostId);
-		if (hostAlive) return false;
+		const hostOk = this.badge.hostId && this.isCrewPresent(this.badge.hostId, exclude);
+		if (hostOk) return false;
 		const successor = this.rightfulHost(exclude);
 		if (successor) { await this.setBadge(successor); return true; }
 		if (this.badge.hostId) { await this.setBadge(null); return true; }
@@ -110,14 +133,30 @@ export class RawStudioRoom extends DurableObject {
 	async webSocketMessage(ws, raw) {
 		let msg;
 		try { msg = JSON.parse(raw); } catch (e) { return; }
-		const me = (ws.deserializeAttachment() || {}).id;
+		const a = ws.deserializeAttachment() || {};
+		const me = a.id;
 
 		if (msg.type === "claim") {
-			if (isEligible(me)) { await this.setBadge(me); this.broadcast(this.stateMsg()); }
+			if (a.role === "crew" && this.isCrewPresent(me)) {
+				await this.setBadge(me);
+				this.broadcast(this.stateMsg());
+			}
 		} else if (msg.type === "pass") {
-			const target = msg.target;
-			if (this.badge.hostId === me && isEligible(target) && this.presentIds().includes(target)) {
-				await this.setBadge(target);
+			if (this.badge.hostId === me && this.isCrewPresent(msg.target)) {
+				await this.setBadge(msg.target);
+				this.broadcast(this.stateMsg());
+			}
+		} else if (msg.type === "admit") {
+			// Only crew may admit/deny knocking guests.
+			if (a.role === "crew" && msg.target) {
+				this.admitted.add(msg.target);
+				await this.saveAdmitted();
+				this.broadcast(this.stateMsg());
+			}
+		} else if (msg.type === "deny") {
+			if (a.role === "crew" && msg.target) {
+				this.admitted.delete(msg.target);
+				await this.saveAdmitted();
 				this.broadcast(this.stateMsg());
 			}
 		} else if (msg.type === "ping") {
@@ -125,20 +164,17 @@ export class RawStudioRoom extends DurableObject {
 		}
 	}
 
-	async webSocketClose(ws, code, reason, wasClean) {
+	async webSocketClose(ws, code, reason) {
 		await this.reconcile(ws);
 		this.broadcast(this.stateMsg(), ws);
 		try { ws.close(code, reason); } catch (e) {}
 	}
-
 	async webSocketError(ws) {
 		await this.reconcile(ws);
 		this.broadcast(this.stateMsg(), ws);
 	}
 
-	sendTo(ws, obj) {
-		try { ws.send(JSON.stringify(obj)); } catch (e) {}
-	}
+	sendTo(ws, obj) { try { ws.send(JSON.stringify(obj)); } catch (e) {} }
 	broadcast(obj, exclude) {
 		const s = JSON.stringify(obj);
 		for (const ws of this.ctx.getWebSockets()) {
@@ -151,18 +187,11 @@ export class RawStudioRoom extends DurableObject {
 export default {
 	async fetch(request, env) {
 		const url = new URL(request.url);
-
 		if (url.pathname === "/health") {
 			return new Response("ok", { headers: { "access-control-allow-origin": "*" } });
 		}
-
 		const match = url.pathname.match(/^\/room\/([A-Za-z0-9_.\-]{1,80})$/);
 		if (!match) return new Response("Not found", { status: 404 });
-
-		if (env.AUTH_KEY && url.searchParams.get("key") !== env.AUTH_KEY) {
-			return new Response("Unauthorized", { status: 401 });
-		}
-
 		const stub = env.RAW_ROOM.get(env.RAW_ROOM.idFromName(match[1]));
 		return stub.fetch(request);
 	}
