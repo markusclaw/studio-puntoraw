@@ -6,11 +6,10 @@
 <title>.RAW Sessions — Greenroom</title>
 <style>
 /* ============================================================
-   .RAW SESSIONS — Guest Greenroom
-   A branded waiting room. The guest's camera publishes to the
-   studio room (via the embedded VDO.Ninja publisher); the host
-   sees them "knocking" and admits them. State is driven by the
-   same Cloudflare Worker as the console.
+   .RAW SESSIONS — Guest Greenroom (with pre-show preflight)
+   Stage 1: the guest checks camera, mic level, framing + name.
+   Stage 2: they publish into the room and wait to be admitted.
+   State is driven by the same Cloudflare Worker as the console.
    ============================================================ */
 :root{
   --bg:#0c0b0a; --panel:#141312; --panel-2:#1a1917; --hair:rgba(255,255,255,.06);
@@ -25,11 +24,10 @@ body{
   background-image:
     radial-gradient(ellipse 70% 50% at 30% 40%, rgba(198,118,59,.05) 0%, transparent 100%),
     radial-gradient(ellipse 60% 50% at 75% 70%, rgba(214,65,43,.04) 0%, transparent 100%);
-  display:grid;place-items:center;min-height:100dvh;-webkit-font-smoothing:antialiased;
+  display:grid;place-items:center;min-height:100dvh;-webkit-font-smoothing:antialiased;padding:20px;
 }
-.wrap{width:min(760px,calc(100vw - 32px));display:grid;gap:18px}
+.wrap{width:min(760px,calc(100vw - 32px));display:grid;gap:16px}
 
-/* header */
 .head{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .brand{display:flex;align-items:center;gap:10px}
 .brand .dot{width:9px;height:9px;border-radius:50%;background:var(--rec);box-shadow:0 0 10px rgba(224,72,59,.5)}
@@ -39,13 +37,28 @@ body{
 .who{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--soft)}
 .who b{color:var(--text)}
 
-/* camera */
 .cam{position:relative;aspect-ratio:16/9;border-radius:12px;overflow:hidden;background:#000;
   border:1px solid var(--hair);box-shadow:0 20px 60px rgba(0,0,0,.5)}
 .cam iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
-.cam .placeholder{position:absolute;inset:0;display:grid;place-items:center;color:var(--soft);font-size:12px;letter-spacing:.1em}
+.cam video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);background:#000}
+.cam .placeholder{position:absolute;inset:0;display:grid;place-items:center;color:var(--soft);font-size:12px;letter-spacing:.06em;text-align:center;padding:24px}
 
-/* status card */
+/* preflight */
+.pf{display:grid;gap:13px}
+.metawrap{display:grid;gap:6px}
+.metawrap .lab{display:flex;justify-content:space-between;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+.meter{height:8px;border-radius:5px;background:var(--panel-2);overflow:hidden}
+.meter span{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--ok),var(--accent));transition:width 80ms linear}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:560px){.row{grid-template-columns:1fr}}
+.field{display:grid;gap:6px;min-width:0}
+.field label{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.field select,.field input{width:100%;background:var(--panel-2);border:0;border-radius:7px;color:var(--text);font-family:var(--mono);font-size:14px;padding:10px 11px}
+.field select:focus,.field input:focus{outline:1px solid var(--accent)}
+.enter{background:var(--accent);border:0;border-radius:8px;color:#1a120b;font-family:var(--mono);font-size:13px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;padding:13px;cursor:pointer}
+.enter:hover{background:#d5843f}
+.hint{font-size:11px;color:var(--muted);text-align:center;line-height:1.5}
+
 .status{display:flex;align-items:center;gap:14px;padding:16px 18px;border-radius:12px;background:var(--panel);border:1px solid var(--hair)}
 .status .pip{width:10px;height:10px;border-radius:50%;flex:0 0 auto;background:var(--soft)}
 .status .pip.wait{background:var(--accent);animation:pulse 1.6s ease-in-out infinite}
@@ -58,14 +71,6 @@ body{
 .status[data-state="admitted"]{border-color:rgba(111,156,90,.35);background:rgba(111,156,90,.06)}
 .status[data-state="offline"]{opacity:.7}
 
-/* name prompt (fallback if no ?name) */
-.namecard{padding:20px;border-radius:12px;background:var(--panel);border:1px solid var(--hair);display:none}
-.namecard[data-show="true"]{display:block}
-.namecard label{display:block;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
-.namecard input{width:100%;background:var(--panel-2);border:0;border-radius:7px;color:var(--text);font-family:var(--mono);font-size:15px;padding:11px 12px;margin-bottom:12px}
-.namecard input:focus{outline:1px solid var(--accent)}
-.namecard button{width:100%;background:var(--accent);border:0;border-radius:7px;color:#1a120b;font-family:var(--mono);font-size:13px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;padding:12px;cursor:pointer}
-
 .foot{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);text-align:center}
 .hidden{display:none!important}
 </style>
@@ -77,66 +82,165 @@ body{
     <div class="who" id="who"></div>
   </div>
 
-  <!-- Name fallback (only if URL has no name) -->
-  <div class="namecard" id="namecard">
-    <label>Your name</label>
-    <input id="nameInput" type="text" maxlength="60" placeholder="e.g. Johnny" autocomplete="off" />
-    <button id="nameGo" type="button">Enter Greenroom</button>
+  <div class="cam" id="cam">
+    <video id="preview" autoplay muted playsinline class="hidden"></video>
+    <div class="placeholder" id="camPh">Starting camera…</div>
   </div>
 
+  <!-- Stage 1: preflight -->
+  <div class="pf" id="preflight">
+    <div class="metawrap">
+      <div class="lab"><span>Mic level</span><span id="micHint">say something…</span></div>
+      <div class="meter"><span id="micBar"></span></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Camera</label><select id="camSel"><option value="">Default</option></select></div>
+      <div class="field"><label>Microphone</label><select id="micSel"><option value="">Default</option></select></div>
+    </div>
+    <div class="field"><label>Your name</label><input id="nameInput" type="text" maxlength="60" placeholder="e.g. Johnny" autocomplete="off" /></div>
+    <button class="enter" id="enterBtn" type="button">Enter greenroom &rarr;</button>
+    <div class="hint" id="pfHint">Check your camera and mic look right, then enter. The host brings you on air when the show's ready — you'll wait here until then.</div>
+  </div>
+
+  <!-- Stage 2: waiting to be admitted -->
   <div id="stage" class="hidden">
-    <div class="cam" id="cam">
-      <div class="placeholder" id="camPlaceholder">Starting camera…</div>
-    </div>
-    <div class="status" id="status" data-state="connecting" style="margin-top:18px">
+    <div class="status" id="status" data-state="connecting">
       <span class="pip" id="pip"></span>
-      <div class="txt"><div class="t" id="statusT">Connecting…</div><div class="s" id="statusS">Reaching the studio</div></div>
+      <div class="txt"><div class="t" id="statusT">Connecting&hellip;</div><div class="s" id="statusS">Reaching the studio</div></div>
     </div>
   </div>
 
-  <div class="foot">.RAW Sessions · you'll go live when the host brings you on</div>
+  <div class="foot">.RAW Sessions &middot; you'll go live when the host brings you on</div>
 </div>
 
 <script>
 "use strict";
 const WORKER_URL = "wss://raw-studio-host.rovelo-ga.workers.dev";
 const VDO_BASE = "https://vdo.ninja";
-
 const params = new URLSearchParams(location.search);
 const ROOM = params.get("room") || "master_sessions_raw";
 const CLIENT_ID_KEY = "raw.host.clientId";
 
+function id(x){ return document.getElementById(x); }
+function esc(s){ return String(s||"").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
 function clientId(){
   try{ let v=localStorage.getItem(CLIENT_ID_KEY);
     if(!v){ v=(crypto&&crypto.randomUUID)?crypto.randomUUID():("c"+Date.now()+Math.floor(Math.random()*1e9)); localStorage.setItem(CLIENT_ID_KEY,v);} return v;
   }catch(e){ return "c"+Date.now()+Math.floor(Math.random()*1e9); }
 }
-const ID = clientId();
+const CID = clientId();
 
 const els = {
-  who:document.getElementById("who"),
-  namecard:document.getElementById("namecard"),
-  nameInput:document.getElementById("nameInput"),
-  nameGo:document.getElementById("nameGo"),
-  stage:document.getElementById("stage"),
-  cam:document.getElementById("cam"),
-  camPh:document.getElementById("camPlaceholder"),
-  status:document.getElementById("status"),
-  pip:document.getElementById("pip"),
-  statusT:document.getElementById("statusT"),
-  statusS:document.getElementById("statusS"),
+  who:id("who"), cam:id("cam"), preview:id("preview"), camPh:id("camPh"),
+  preflight:id("preflight"), micBar:id("micBar"), micHint:id("micHint"),
+  camSel:id("camSel"), micSel:id("micSel"), nameInput:id("nameInput"), enterBtn:id("enterBtn"),
+  stage:id("stage"), status:id("status"), pip:id("pip"), statusT:id("statusT"), statusS:id("statusS")
 };
 
 let NAME = (params.get("name")||"").trim().slice(0,60);
-let socket=null, connected=false, admitted=false, reconnectDelay=1000;
+if (NAME) els.nameInput.value = NAME;
+
+/* ---------- Preflight: local preview, device pickers, mic meter ---------- */
+let previewStream=null, audioCtx=null, rafId=null;
+
+async function initPreflight(){
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    els.camPh.textContent = "This browser can't preview your camera — you can still enter.";
+    return;
+  }
+  try{
+    previewStream = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
+  }catch(e){
+    els.camPh.textContent = "Camera or mic blocked. Allow access in your browser, or enter anyway and fix it inside.";
+    await populateDevices();
+    return;
+  }
+  els.preview.srcObject = previewStream;
+  els.preview.classList.remove("hidden");
+  els.camPh.classList.add("hidden");
+  await populateDevices();
+  syncSelectionFromStream();
+  startMeter();
+}
+
+async function populateDevices(){
+  let devs=[];
+  try{ devs = await navigator.mediaDevices.enumerateDevices(); }catch(e){}
+  fillSelect(els.camSel, devs.filter(d=>d.kind==="videoinput"));
+  fillSelect(els.micSel, devs.filter(d=>d.kind==="audioinput"));
+}
+function fillSelect(sel, list){
+  sel.innerHTML="";
+  if(!list.length){ const o=document.createElement("option"); o.value=""; o.textContent="Default"; sel.appendChild(o); return; }
+  list.forEach((d,i)=>{ const o=document.createElement("option"); o.value=d.deviceId; o.textContent=d.label||("Device "+(i+1)); sel.appendChild(o); });
+}
+function syncSelectionFromStream(){
+  try{
+    const vt=previewStream.getVideoTracks()[0], at=previewStream.getAudioTracks()[0];
+    if(vt){ const s=vt.getSettings(); if(s.deviceId) els.camSel.value=s.deviceId; }
+    if(at){ const s=at.getSettings(); if(s.deviceId) els.micSel.value=s.deviceId; }
+  }catch(e){}
+}
+async function switchDevices(){
+  stopMeter();
+  if(previewStream){ previewStream.getTracks().forEach(t=>t.stop()); }
+  const cam=els.camSel.value, mic=els.micSel.value;
+  try{
+    previewStream = await navigator.mediaDevices.getUserMedia({
+      video: cam ? { deviceId:{ exact:cam } } : true,
+      audio: mic ? { deviceId:{ exact:mic } } : true
+    });
+    els.preview.srcObject=previewStream;
+    els.preview.classList.remove("hidden");
+    els.camPh.classList.add("hidden");
+    startMeter();
+  }catch(e){
+    els.camPh.textContent="Couldn't switch device.";
+    els.camPh.classList.remove("hidden");
+  }
+}
+function startMeter(){
+  try{
+    const at=previewStream && previewStream.getAudioTracks()[0];
+    if(!at) return;
+    audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    const src=audioCtx.createMediaStreamSource(previewStream);
+    const an=audioCtx.createAnalyser(); an.fftSize=512; src.connect(an);
+    const data=new Uint8Array(an.frequencyBinCount);
+    let seen=false;
+    (function loop(){
+      an.getByteTimeDomainData(data);
+      let peak=0; for(let i=0;i<data.length;i++){ const v=Math.abs(data[i]-128); if(v>peak) peak=v; }
+      const pct=Math.min(100, Math.round((peak/128)*180));
+      els.micBar.style.width=pct+"%";
+      if(pct>7 && !seen){ seen=true; els.micHint.textContent="sounds good"; }
+      rafId=requestAnimationFrame(loop);
+    })();
+  }catch(e){}
+}
+function stopMeter(){
+  if(rafId) cancelAnimationFrame(rafId); rafId=null;
+  if(audioCtx){ try{ audioCtx.close(); }catch(e){} audioCtx=null; }
+  if(els.micBar) els.micBar.style.width="0";
+}
+els.camSel.addEventListener("change", switchDevices);
+els.micSel.addEventListener("change", switchDevices);
+
+/* ---------- Stage 2: publish + connect to Worker, wait for admit ---------- */
+let socket=null, connected=false, admitted=false, reconnectDelay=1000, rt=null;
 
 function startCamera(){
-  // Embed the VDO.Ninja webcam publisher so the guest's camera reaches the room.
-  const src = `${VDO_BASE}/?room=${encodeURIComponent(ROOM)}&webcam&label=${encodeURIComponent(NAME)}&cleanoutput&autostart`;
-  const f = document.createElement("iframe");
-  f.allow = "camera; microphone; autoplay; fullscreen; display-capture";
-  f.src = src;
+  let q = "room="+encodeURIComponent(ROOM)+"&webcam&label="+encodeURIComponent(NAME)+"&cleanoutput&autostart";
+  // Best-effort: ask VDO for the devices chosen in preflight (matched by label; falls back to default).
+  const camLabel = els.camSel.selectedOptions[0] ? els.camSel.selectedOptions[0].textContent : "";
+  const micLabel = els.micSel.selectedOptions[0] ? els.micSel.selectedOptions[0].textContent : "";
+  if(camLabel && camLabel!=="Default") q += "&videodevice="+encodeURIComponent(camLabel);
+  if(micLabel && micLabel!=="Default") q += "&audiodevice="+encodeURIComponent(micLabel);
+  const f=document.createElement("iframe");
+  f.allow="camera; microphone; autoplay; fullscreen; display-capture";
+  f.src=VDO_BASE+"/?"+q;
   els.cam.appendChild(f);
+  els.preview.classList.add("hidden");
   els.camPh.classList.add("hidden");
 }
 
@@ -156,43 +260,40 @@ function renderStatus(){
     els.statusS.textContent="The host has been notified you're here.";
   }
 }
-
 function connect(){
-  const q=new URLSearchParams({id:ID,name:NAME,code:""}); // no crew code → guest
-  try{ socket=new WebSocket(`${WORKER_URL.replace(/\/+$/,"")}/room/${encodeURIComponent(ROOM)}?${q}`); }
+  const q=new URLSearchParams({ id:CID, name:NAME, code:"" });
+  try{ socket=new WebSocket(WORKER_URL.replace(/\/+$/,"")+"/room/"+encodeURIComponent(ROOM)+"?"+q); }
   catch(e){ scheduleReconnect(); return; }
   socket.addEventListener("open",()=>{ connected=true; reconnectDelay=1000; renderStatus(); });
   socket.addEventListener("message",ev=>{
-    let m; try{m=JSON.parse(ev.data);}catch(e){return;}
+    let m; try{ m=JSON.parse(ev.data); }catch(e){ return; }
     if(m.type==="state"){
-      const me=(m.members||[]).find(x=>x.id===ID);
+      const me=(m.members||[]).find(x=>x.id===CID);
       admitted = me ? !!me.admitted : false;
       renderStatus();
     }
   });
   socket.addEventListener("close",()=>{ connected=false; renderStatus(); scheduleReconnect(); });
-  socket.addEventListener("error",()=>{ try{socket.close();}catch(e){} });
+  socket.addEventListener("error",()=>{ try{ socket.close(); }catch(e){} });
 }
-let rt=null;
 function scheduleReconnect(){ clearTimeout(rt); rt=setTimeout(connect, reconnectDelay); reconnectDelay=Math.min(reconnectDelay*2,10000); }
 
-function begin(){
-  els.who.innerHTML = `You&nbsp;<b>${NAME.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}</b>`;
-  els.namecard.dataset.show="false";
+function enter(){
+  const v=els.nameInput.value.trim().slice(0,60);
+  if(!v){ els.nameInput.focus(); return; }
+  NAME=v;
+  els.who.innerHTML="You&nbsp;<b>"+esc(NAME)+"</b>";
+  stopMeter();
+  if(previewStream){ previewStream.getTracks().forEach(t=>t.stop()); previewStream=null; }
+  els.preflight.classList.add("hidden");
   els.stage.classList.remove("hidden");
   startCamera();
   connect();
 }
+els.enterBtn.addEventListener("click", enter);
+els.nameInput.addEventListener("keydown", e=>{ if(e.key==="Enter") enter(); });
 
-if (NAME){
-  begin();
-} else {
-  els.namecard.dataset.show="true";
-  els.nameInput.focus();
-  const go=()=>{ const v=els.nameInput.value.trim().slice(0,60); if(!v) return; NAME=v; begin(); };
-  els.nameGo.addEventListener("click",go);
-  els.nameInput.addEventListener("keydown",e=>{ if(e.key==="Enter") go(); });
-}
+initPreflight();
 </script>
 </body>
 </html>

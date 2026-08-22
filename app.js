@@ -319,16 +319,10 @@ function buildDirectorUrl() {
 }
 
 async function buildInviteUrl() {
-	const url = new URL("https://vdo.ninja/index.html");
-	const extra = currentExtraParams();
-	url.searchParams.set("room", state.room);
-	url.searchParams.set("webcam", "");
-	url.searchParams.set("label", "");
-	if (state.password) {
-		url.searchParams.set("password", state.password);
-	}
-	appendParams(url, extra);
-	return url.href;
+  // Guests join through the branded greenroom on our own origin (not a raw vdo.ninja link).
+  const url = new URL("greenroom.html", location.href);
+  url.searchParams.set("room", state.room);
+  return url.href;
 }
 
 function buildSceneUrl(options = {}) {

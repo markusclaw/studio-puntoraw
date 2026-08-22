@@ -626,5 +626,69 @@
   });
 })();
 </script>
+<script>
+/* Phase 2 - People rows: compact participant rows with quick actions that proxy app.js's own buttons (all wiring reused). */
+(function(){
+  function ready(fn){document.readyState!=='loading'?fn():document.addEventListener('DOMContentLoaded',fn);}
+  ready(function(){
+    var list=document.getElementById('source-list'); if(!list) return;
+    function iconBtn(cls,icon,title){var b=document.createElement('button');b.type='button';b.className='raw-qbtn '+cls;b.title=title;b.setAttribute('aria-label',title);b.innerHTML='<i class="las '+icon+'"></i>';return b;}
+    function realBtn(card,texts){var btns=card.querySelectorAll('.source-card__actions .button');for(var i=0;i<btns.length;i++){var t=btns[i].textContent.trim();for(var j=0;j<texts.length;j++)if(t===texts[j])return btns[i];}return null;}
+    function proxy(real){real.classList.add('raw-proxied');return function(){real.click();};}
+    function decorate(card){
+      if(card.querySelector('.raw-quickbar'))return;
+      var actionsEl=card.querySelector('.source-card__actions');
+      var slot=card.querySelector('.source-card__slot');var stEl=card.querySelector('.source-card__state');if(slot&&stEl)stEl.appendChild(slot);
+      var qb=document.createElement('div');qb.className='raw-quickbar';
+      var mic=realBtn(card,['Mute Mic','Unmute Mic']);if(mic){var muted=mic.textContent.trim()==='Unmute Mic';var b=iconBtn('raw-qbtn--mic',muted?'la-microphone-slash':'la-microphone',muted?'Unmute mic':'Mute mic');b.dataset.active=muted?'off':'on';b.addEventListener('click',proxy(mic));qb.appendChild(b);}
+      var cam=realBtn(card,['Camera Off','Camera On']);if(cam){var off=cam.textContent.trim()==='Camera On';var b2=iconBtn('raw-qbtn--cam',off?'la-video-slash':'la-video',off?'Turn camera on':'Turn camera off');b2.dataset.active=off?'off':'on';b2.addEventListener('click',proxy(cam));qb.appendChild(b2);}
+      var solo=realBtn(card,['Solo']);if(solo){var b3=iconBtn('raw-qbtn--solo','la-star','Solo');b3.addEventListener('click',proxy(solo));qb.appendChild(b3);}
+      var stg=realBtn(card,['Add to Scene','Remove from Scene']);if(stg){var on=stg.textContent.trim()==='Remove from Scene';var b4=iconBtn('raw-qbtn--stage',on?'la-user-minus':'la-user-plus',on?'Remove from scene':'Add to scene');b4.dataset.on=on?'true':'false';if(stg.disabled)b4.disabled=true;b4.addEventListener('click',proxy(stg));qb.appendChild(b4);}
+      var act=realBtn(card,['Activate Guest']);if(act){var b5=iconBtn('raw-qbtn--act','la-user-check','Activate guest');b5.addEventListener('click',proxy(act));qb.appendChild(b5);}
+      var more=iconBtn('raw-qbtn--more','la-ellipsis-h','More controls');more.addEventListener('click',function(e){e.stopPropagation();card.dataset.actions=card.dataset.actions==='open'?'':'open';});qb.appendChild(more);
+      if(actionsEl)card.insertBefore(qb,actionsEl);else card.appendChild(qb);
+    }
+    function all(){var c=list.querySelectorAll('.source-card');for(var i=0;i<c.length;i++)decorate(c[i]);}
+    new MutationObserver(all).observe(list,{childList:true});
+    all();
+  });
+})();
+</script>
+<script>
+/* Phase 5 - Polish: transcript utility drawer, scene keyboard shortcuts (1-9), focus states. */
+(function(){
+  function ready(fn){document.readyState!=='loading'?fn():document.addEventListener('DOMContentLoaded',fn);}
+  ready(function(){
+    var sec=document.querySelector('.transcript-section');
+    if(sec && !sec.querySelector('.raw-tr-caret')){
+      var head=sec.querySelector('.panel-heading'); var h2=head&&head.querySelector('h2');
+      if(head){
+        var caret=document.createElement('button');caret.type='button';caret.className='raw-tr-caret';caret.setAttribute('aria-label','Toggle transcript');caret.innerHTML='<i class="las la-angle-down"></i>';
+        var live=document.createElement('span');live.className='raw-tr-live';live.title='Transcribing';
+        if(h2) h2.appendChild(live);
+        head.appendChild(caret);
+        var set=function(c){ sec.dataset.collapsed=c?'true':'false'; caret.setAttribute('aria-expanded',c?'false':'true'); try{localStorage.setItem('raw.ui.transcript',c?'1':'0');}catch(e){} };
+        var saved; try{saved=localStorage.getItem('raw.ui.transcript');}catch(e){}
+        set(saved!=='0');
+        caret.addEventListener('click',function(e){e.stopPropagation();set(sec.dataset.collapsed!=='true');});
+        if(h2) h2.addEventListener('click',function(){set(sec.dataset.collapsed!=='true');});
+        var tog=document.getElementById('transcript-toggle');
+        if(tog){ var upd=function(){document.body.dataset.transcript=(tog.textContent.trim()==='Stop')?'on':'off';}; upd(); new MutationObserver(upd).observe(tog,{childList:true,characterData:true,subtree:true}); }
+      }
+    }
+    var sl=document.getElementById('scene-list');
+    if(sl){
+      var badge=function(){ var c=sl.querySelectorAll('.scene-card'); for(var i=0;i<c.length;i++){ if(i<9 && !c[i].querySelector('.raw-scene-key')){ var b=document.createElement('span');b.className='raw-scene-key';b.textContent=String(i+1);c[i].appendChild(b);} } };
+      new MutationObserver(badge).observe(sl,{childList:true}); badge();
+      document.addEventListener('keydown',function(e){
+        if(e.metaKey||e.ctrlKey||e.altKey) return;
+        var t=e.target; if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'||t.isContentEditable)) return;
+        var root=document.getElementById('studio-root'); if(!root||root.dataset.state!=='studio') return;
+        if(e.key>='1'&&e.key<='9'){ var idx=parseInt(e.key,10)-1; var c=sl.querySelectorAll('.scene-card'); if(c[idx]){ e.preventDefault(); c[idx].click(); } }
+      });
+    }
+  });
+})();
+</script>
 </body>
 </html>
