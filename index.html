@@ -715,5 +715,112 @@
   });
 })();
 </script>
+<script>
+/* Room in header: lift guest-invite + room-password out of the Crew list into a header popover (moves the real nodes, wiring preserved). */
+(function(){
+  function ready(fn){document.readyState!=='loading'?fn():document.addEventListener('DOMContentLoaded',fn);}
+  ready(function(){
+    if(document.querySelector('.raw-roomwrap')) return;
+    var tab=document.querySelector('.tab-panel[data-panel="sources"]');
+    var anchor=document.querySelector('.topbar__identity')||document.querySelector('.topbar');
+    if(!tab||!anchor) return;
+    var invite=tab.querySelector('.invite-card');
+    var pw=tab.querySelector('.password-card');
+    if(!invite && !pw) return;
+    var roomHead=tab.querySelector('.panel-heading:not(.panel-heading--section)');
+    var wrap=document.createElement('div');wrap.className='raw-roomwrap';
+    var btn=document.createElement('button');btn.type='button';btn.className='raw-roombtn';btn.setAttribute('aria-expanded','false');btn.setAttribute('aria-label','Room invite and password');
+    btn.innerHTML='<i class="las la-user-plus"></i><span>Room</span><i class="las la-angle-down raw-roombtn__c"></i>';
+    var pop=document.createElement('div');pop.className='raw-roompop';pop.setAttribute('role','dialog');pop.setAttribute('aria-label','Room');
+    var title=document.createElement('div');title.className='raw-roompop__title';title.textContent='Room';
+    pop.appendChild(title);
+    if(invite) pop.appendChild(invite);
+    if(pw) pop.appendChild(pw);
+    if(roomHead) roomHead.remove();
+    wrap.appendChild(btn);wrap.appendChild(pop);anchor.appendChild(wrap);
+    function open(v){ wrap.dataset.open=v?'true':'false'; btn.setAttribute('aria-expanded',v?'true':'false'); }
+    open(false);
+    btn.addEventListener('click',function(e){ e.stopPropagation(); open(wrap.dataset.open!=='true'); });
+    pop.addEventListener('click',function(e){ e.stopPropagation(); });
+    document.addEventListener('click',function(e){ if(wrap.dataset.open==='true' && !wrap.contains(e.target)) open(false); });
+    document.addEventListener('keydown',function(e){ if(e.key==='Escape') open(false); });
+  });
+})();
+</script>
+<script>
+/* Video-forward crew cards: move name + status into the feed so they overlay the video. */
+(function(){
+  function ready(fn){document.readyState!=='loading'?fn():document.addEventListener('DOMContentLoaded',fn);}
+  ready(function(){
+    var list=document.getElementById('source-list'); if(!list) return;
+    function fix(){
+      var cards=list.querySelectorAll('.source-card');
+      for(var i=0;i<cards.length;i++){
+        var c=cards[i]; var prev=c.querySelector('.source-card__preview'); if(!prev) continue;
+        var h=c.querySelector(':scope > .source-card__header'); if(h) prev.appendChild(h);
+        var s=c.querySelector(':scope > .source-card__state'); if(s) prev.appendChild(s);
+      }
+    }
+    new MutationObserver(fix).observe(list,{childList:true}); fix();
+  });
+})();
+</script>
+<script>
+/* Stage no-feed static: tag layout boxes whose source has no live video so they show the static placeholder. */
+(function(){
+  function ready(fn){document.readyState!=='loading'?fn():document.addEventListener('DOMContentLoaded',fn);}
+  ready(function(){
+    var overlay=document.getElementById('stage-overlay'); if(!overlay) return;
+    function tag(){
+      var st=window.studioApp&&window.studioApp.state; if(!st) return;
+      var scene=(st.scenes||[]).find(function(s){return s.id===st.activeSceneId;});
+      var boxes=overlay.querySelectorAll('.layout-box');
+      for(var i=0;i<boxes.length;i++){
+        var box=boxes[i];
+        var item=(scene&&scene.layout)?scene.layout.find(function(it){return it.id===box.dataset.boxId;}):null;
+        var src=(item&&item.streamID&&st.sources)?st.sources.get(item.streamID):null;
+        var hasVideo=!!(src && !src.disconnected && !src.videoMuted);
+        box.dataset.nofeed=hasVideo?'false':'true';
+      }
+    }
+    new MutationObserver(tag).observe(overlay,{childList:true}); tag();
+  });
+})();
+</script>
+<script>
+/* Natural static engine: one shared rAF loop draws random noise into small canvases overlaid on missing feeds. */
+(function(){
+  function ready(fn){document.readyState!=='loading'?fn():document.addEventListener('DOMContentLoaded',fn);}
+  ready(function(){
+    var canvases=[], last=0;
+    function loop(ts){
+      if(ts-last>66){ last=ts;
+        for(var i=canvases.length-1;i>=0;i--){ var cv=canvases[i];
+          if(!cv.isConnected){ canvases.splice(i,1); continue; }
+          var w=cv.width,h=cv.height,ctx=cv._ctx; if(!ctx) continue;
+          var img=ctx.createImageData(w,h), d=img.data;
+          for(var y=0;y<h;y++){ var sl=(y&1)?0.6:1; for(var x=0;x<w;x++){ var idx=(y*w+x)*4; var v=(Math.random()*255*sl)|0; d[idx]=v; d[idx+1]=v; d[idx+2]=v; d[idx+3]=255; } }
+          ctx.putImageData(img,0,0);
+        }
+      }
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+    function add(host){ if(!host||host.querySelector(':scope > .raw-static-cv'))return; var cv=document.createElement('canvas'); cv.className='raw-static-cv'; cv.width=256; cv.height=144; try{cv._ctx=cv.getContext('2d');}catch(e){return;} host.insertBefore(cv, host.firstChild); canvases.push(cv); if(!host.querySelector(':scope > .raw-sig')){ var sg=document.createElement('div'); sg.className='raw-sig'; sg.innerHTML='<span class="d"></span>No signal'; host.appendChild(sg); } }
+    function drop(host){ if(!host)return; var cv=host.querySelector(':scope > .raw-static-cv'); if(cv){ var i=canvases.indexOf(cv); if(i>=0)canvases.splice(i,1); cv.remove(); } var sg=host.querySelector(':scope > .raw-sig'); if(sg) sg.remove(); }
+
+    var list=document.getElementById('source-list');
+    if(list){
+      var scanCrew=function(){ var pv=list.querySelectorAll('.source-card__preview'); for(var i=0;i<pv.length;i++){ pv[i].querySelector('img')?drop(pv[i]):add(pv[i]); } };
+      new MutationObserver(scanCrew).observe(list,{childList:true,subtree:true}); scanCrew();
+    }
+    var overlay=document.getElementById('stage-overlay');
+    if(overlay){
+      var scanStage=function(){ var bx=overlay.querySelectorAll('.layout-box'); for(var i=0;i<bx.length;i++){ bx[i].dataset.nofeed==='true'?add(bx[i]):drop(bx[i]); } };
+      new MutationObserver(scanStage).observe(overlay,{childList:true,attributes:true,attributeFilter:['data-nofeed']}); scanStage();
+    }
+  });
+})();
+</script>
 </body>
 </html>

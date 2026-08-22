@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>.RAW Sessions — Standby</title>
+<style>
+/* ============================================================
+   .RAW SESSIONS — Standby / Be Right Back card
+   A branded color-bar test screen for breaks + pre-show holds.
+   Use as an OBS Browser Source (1920x1080) or open full-screen.
+   Optional URL params:  ?msg=BE%20RIGHT%20BACK   ?sub=Standing%20by
+   ============================================================ */
+:root{
+  --ink:#0b0a09; --band:#0d0c0b; --hair:rgba(255,255,255,.08);
+  --text:#ECE7DD; --muted:#9a9186; --accent:#C6763B; --rec:#E0483B;
+  --mono:"SFMono-Regular",Menlo,Monaco,Consolas,"Liberation Mono",monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--ink);overflow:hidden}
+.screen{position:fixed;inset:0;display:flex;flex-direction:column;font-family:var(--mono);color:var(--text)}
+
+/* main 75% SMPTE-style bars */
+.bars{flex:1;display:flex}
+.bars span{flex:1;height:100%}
+.bars .b0{background:#b0b0b0}
+.bars .b1{background:#b5b000}
+.bars .b2{background:#00b3b3}
+.bars .b3{background:#12a52a}
+.bars .b4{background:#b02a9e}
+.bars .b5{background:#c23a2a}
+.bars .b6{background:#2f4bd0}
+
+/* reverse mini row */
+.mini{height:8%;display:flex}
+.mini span{flex:1}
+.mini .m0{background:#2f4bd0}
+.mini .m1{background:#0e0d0c}
+.mini .m2{background:#b02a9e}
+.mini .m3{background:#0e0d0c}
+.mini .m4{background:#00b3b3}
+.mini .m5{background:#0e0d0c}
+.mini .m6{background:#b0b0b0}
+
+/* branded standby band */
+.band{height:26%;min-height:120px;background:linear-gradient(180deg,#100e0c,#0a0908);
+  display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:24px;
+  padding:0 clamp(24px,4vw,72px);border-top:1px solid var(--hair)}
+.brand{display:flex;align-items:center;gap:14px}
+.brand .dot{width:clamp(10px,1vw,14px);height:clamp(10px,1vw,14px);border-radius:50%;background:var(--rec);
+  box-shadow:0 0 16px rgba(224,72,59,.6);animation:pulse 1.7s ease-in-out infinite}
+.brand .wm{line-height:1.1}
+.brand .wm .a{color:var(--accent)}
+.brand .wm .t{font-size:clamp(18px,2.2vw,34px);font-weight:700;letter-spacing:.02em}
+.brand .wm .s{font-size:clamp(9px,.8vw,12px);letter-spacing:.42em;color:var(--muted);text-transform:uppercase;margin-top:4px}
+
+.msg{text-align:center}
+.msg .big{font-size:clamp(26px,4.4vw,72px);font-weight:700;letter-spacing:.06em;text-transform:uppercase;text-wrap:balance}
+.msg .sub{margin-top:8px;font-size:clamp(10px,1vw,15px);letter-spacing:.34em;text-transform:uppercase;color:var(--muted)}
+
+.clock{justify-self:end;text-align:right}
+.clock .time{font-size:clamp(22px,3vw,48px);font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:.04em}
+.clock .lab{font-size:clamp(9px,.8vw,12px);letter-spacing:.34em;text-transform:uppercase;color:var(--muted);margin-top:4px}
+
+@keyframes pulse{50%{opacity:.35}}
+
+/* broadcast texture: scanlines + vignette + faint grain flicker */
+.tex{position:fixed;inset:0;pointer-events:none;z-index:5}
+.tex.scan{background:repeating-linear-gradient(180deg,rgba(0,0,0,.16) 0 1px,transparent 1px 3px);mix-blend-mode:multiply;opacity:.5}
+.tex.vig{box-shadow:inset 0 0 min(18vw,240px) min(4vw,60px) rgba(0,0,0,.55)}
+.tex.grain{opacity:.05}
+@media (prefers-reduced-motion:reduce){ .brand .dot{animation:none} }
+</style>
+</head>
+<body>
+<div class="screen">
+  <div class="bars">
+    <span class="b0"></span><span class="b1"></span><span class="b2"></span><span class="b3"></span><span class="b4"></span><span class="b5"></span><span class="b6"></span>
+  </div>
+  <div class="mini">
+    <span class="m0"></span><span class="m1"></span><span class="m2"></span><span class="m3"></span><span class="m4"></span><span class="m5"></span><span class="m6"></span>
+  </div>
+  <div class="band">
+    <div class="brand">
+      <span class="dot"></span>
+      <div class="wm"><div class="t"><span class="a">.RAW</span> SESSIONS</div><div class="s">Standby</div></div>
+    </div>
+    <div class="msg">
+      <div class="big" id="msg">Be Right Back</div>
+      <div class="sub" id="sub">We'll be live shortly</div>
+    </div>
+    <div class="clock">
+      <div class="time" id="clock">--:--:--</div>
+      <div class="lab">Local time</div>
+    </div>
+  </div>
+</div>
+<canvas class="tex grain" id="grain"></canvas>
+<div class="tex scan"></div>
+<div class="tex vig"></div>
+
+<script>
+"use strict";
+var params = new URLSearchParams(location.search);
+var msg = params.get("msg"); if (msg) document.getElementById("msg").textContent = msg;
+var sub = params.get("sub"); if (sub !== null) document.getElementById("sub").textContent = sub;
+
+/* live clock */
+function two(n){ return (n<10?"0":"")+n; }
+function tick(){
+  var d = new Date();
+  document.getElementById("clock").textContent = two(d.getHours())+":"+two(d.getMinutes())+":"+two(d.getSeconds());
+}
+tick(); setInterval(tick, 1000);
+
+/* faint animated grain over the bars (broadcast texture) */
+(function(){
+  var cv = document.getElementById("grain");
+  var ctx = cv.getContext("2d");
+  var W = 320, H = 180; cv.width = W; cv.height = H;
+  cv.style.width = "100%"; cv.style.height = "100%"; cv.style.imageRendering = "pixelated";
+  var last = 0;
+  function draw(ts){
+    if (ts - last > 66){
+      last = ts;
+      var img = ctx.createImageData(W, H), d = img.data;
+      for (var i=0;i<d.length;i+=4){ var v=(Math.random()*255)|0; d[i]=v; d[i+1]=v; d[i+2]=v; d[i+3]=255; }
+      ctx.putImageData(img, 0, 0);
+    }
+    requestAnimationFrame(draw);
+  }
+  requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>

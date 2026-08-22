@@ -2039,3 +2039,91 @@ body[data-transcript="on"] .raw-tr-live{display:inline-block}
 .raw-dismiss:hover{background:rgba(224,72,59,.12)}
 .raw-dismiss i{font-size:13px}
 
+
+
+/* ============================================================
+   ROOM IN HEADER — invite + password lifted to a header popover,
+   out of the Crew list (declutters the sidebar). Real nodes are
+   moved, so all copy/update wiring is preserved.
+   ============================================================ */
+.raw-roomwrap{position:relative;display:inline-flex}
+.raw-roombtn{display:inline-flex;align-items:center;gap:7px;font-family:inherit;font-size:12px;color:var(--smoke,#948B7E);background:transparent;border:1px solid var(--line,rgba(255,255,255,.12));border-radius:7px;padding:7px 11px;cursor:pointer}
+.raw-roombtn:hover{color:var(--offwhite,#E6DFD2)}
+.raw-roombtn i{font-size:13px}
+.raw-roombtn__c{font-size:10px;transition:transform .15s}
+.raw-roomwrap[data-open="true"] .raw-roombtn{color:var(--offwhite,#E6DFD2);border-color:var(--line-strong,rgba(255,255,255,.2))}
+.raw-roomwrap[data-open="true"] .raw-roombtn__c{transform:rotate(180deg)}
+.raw-roompop{position:absolute;top:calc(100% + 8px);left:0;z-index:60;display:none;width:340px;max-width:min(340px,calc(100vw - 32px));background:var(--panel,#141312);border:1px solid var(--line-strong,rgba(255,255,255,.14));border-radius:12px;padding:14px;box-shadow:0 20px 60px rgba(0,0,0,.6);flex-direction:column;gap:12px}
+.raw-roomwrap[data-open="true"] .raw-roompop{display:flex}
+.raw-roompop__title{font-family:var(--mono,ui-monospace,monospace);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--bronze,#C6763B)}
+.raw-roompop .field-row{width:100%}
+.tab-panel[data-panel="sources"] .panel-heading--section:first-child{margin-top:0;border-top:0;padding-top:0}
+
+
+
+/* ============================================================
+   VIDEO-FORWARD CREW CARDS — the feed is the card; name+status
+   overlaid on it; controls in a bar below. Missing feeds show
+   an animated "static / NO SIGNAL" placeholder.
+   ============================================================ */
+.source-card{display:block;position:relative;padding:0;overflow:hidden;border-radius:10px}
+.source-card__preview{width:100%;height:auto;aspect-ratio:16/9;min-height:0;border-radius:0;position:relative;overflow:hidden;align-self:auto}
+.source-card__preview img{width:100%;height:100%;object-fit:cover}
+.source-card__meta{display:none}
+.source-card__preview .source-card__header{position:absolute;left:8px;bottom:9px;z-index:3;background:rgba(0,0,0,.62);padding:3px 9px;border-radius:6px;display:flex;gap:7px;align-items:center;max-width:calc(100% - 16px)}
+.source-card__preview .source-card__name{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.source-card__preview .source-card__slot{font-size:9px;color:var(--bronze,#C6763B)}
+.source-card__preview .source-card__state{position:absolute;top:8px;left:8px;z-index:3;background:rgba(0,0,0,.55);padding:2px 8px;border-radius:5px;font-size:9px;letter-spacing:.06em;color:var(--smoke,#948B7E);display:flex;align-items:center;gap:6px}
+.source-card__meter{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(0,0,0,.45);z-index:2}
+.raw-quickbar{display:flex;gap:6px;padding:8px 10px;background:var(--panel-2,#1a1917);align-items:center}
+.raw-qbtn{background:rgba(0,0,0,.28)}
+.source-card[data-actions="open"] .source-card__actions{display:flex;flex-wrap:wrap;gap:6px;padding:0 10px 10px;background:var(--panel-2,#1a1917);margin-top:0}
+@keyframes rawstatic{0%{background-position:0 0}25%{background-position:-12px 6px}50%{background-position:8px -10px}75%{background-position:-6px 12px}100%{background-position:10px 4px}}
+.source-card__preview:not(:has(img)){background-color:#0e0c0b;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.4'/%3E%3C/svg%3E");background-size:170px 170px;animation:rawstatic .45s steps(3) infinite}
+.source-card__preview:not(:has(img)) i{display:none}
+.source-card__preview:not(:has(img))::after{content:"NO SIGNAL";position:absolute;inset:0;display:grid;place-items:center;font-family:var(--mono,ui-monospace,monospace);font-size:10px;letter-spacing:.34em;color:rgba(230,223,210,.45);z-index:1;pointer-events:none}
+
+
+
+/* ============================================================
+   STAGE "NO SIGNAL" STATIC — Build-mode layout boxes whose source
+   has no live video get the static texture (boxes with real video
+   keep the see-through tint so the feed shows). Live stays clean.
+   ============================================================ */
+#studio-root[data-mode="build"] .layout-box[data-nofeed="true"]{
+  background-color:#0e0c0b;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.4'/%3E%3C/svg%3E");
+  background-size:170px 170px;
+  animation:rawstatic .45s steps(3) infinite;
+}
+
+
+
+/* ============================================================
+   NATURAL STATIC (canvas) — replaces the CSS-loop static with
+   true per-frame random noise so it never reads as a loop.
+   ============================================================ */
+.source-card__preview:not(:has(img)){background-image:none;animation:none}
+#studio-root[data-mode="build"] .layout-box[data-nofeed="true"]{background-image:none;animation:none}
+.raw-static-cv{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;opacity:.9;image-rendering:pixelated}
+.source-card__preview:not(:has(img))::after{color:rgba(235,230,220,.85);text-shadow:0 1px 3px rgba(0,0,0,.95);z-index:4}
+.layout-box__label,.layout-box__handle{z-index:2}
+
+
+
+/* ============================================================
+   STATIC v3 — clean standby (soft screen + faint grain + chip)
+   ============================================================ */
+.source-card__preview:not(:has(img)),
+#studio-root .layout-box[data-nofeed="true"]{
+  background:radial-gradient(ellipse 120% 120% at 50% 38%, #1b1613 0%, #0d0b0a 70%)!important;
+  box-shadow:inset 0 0 60px 8px rgba(0,0,0,.55)!important;
+}
+.raw-static-cv{opacity:.10!important}
+.source-card__preview:not(:has(img))::after{content:none!important}
+.raw-sig{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:2;display:flex;align-items:center;gap:9px;
+  background:rgba(14,13,12,.55);border:1px solid rgba(255,255,255,.1);padding:7px 14px;border-radius:20px;
+  font-family:var(--mono,ui-monospace,monospace);font-size:10px;letter-spacing:.26em;color:rgba(230,223,210,.72);
+  text-transform:uppercase;backdrop-filter:blur(3px);pointer-events:none;white-space:nowrap}
+.raw-sig .d{width:6px;height:6px;border-radius:50%;background:var(--bronze,#C6763B);box-shadow:0 0 8px rgba(198,118,59,.7);animation:rawpulse 1.8s ease-in-out infinite}
+
