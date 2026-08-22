@@ -194,6 +194,42 @@ button {
 	margin-bottom: 0;
 }
 
+/* EP prefix input */
+.ep-input-wrap {
+	display: flex;
+	align-items: center;
+	background: var(--panel-2);
+	border: 1px solid var(--line-strong);
+	border-radius: var(--radius);
+	overflow: hidden;
+}
+.ep-prefix {
+	padding: 0 0 0 12px;
+	font-size: 13px;
+	font-family: var(--mono);
+	color: var(--muted);
+	user-select: none;
+	flex-shrink: 0;
+}
+.ep-input-wrap input {
+	border: none !important;
+	background: transparent !important;
+	padding-left: 2px !important;
+	width: 60px;
+}
+.ep-input-wrap:focus-within {
+	border-color: var(--accent);
+}
+
+/* Gate hint */
+.gate-hint {
+	font-size: 9px;
+	text-transform: none;
+	letter-spacing: 0.02em;
+	color: var(--soft);
+	font-weight: normal;
+}
+
 /* ── Gate Crew ── */
 
 .gate-crew {

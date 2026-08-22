@@ -27,7 +27,10 @@
 					<div class="gate-episode-config">
 						<label class="gate-field">
 							<span>Episode</span>
-							<input id="episode-number" name="episode" type="text" autocomplete="off" placeholder="EP011" />
+							<div class="ep-input-wrap">
+								<span class="ep-prefix">EP</span>
+								<input id="episode-number" name="episode" type="text" autocomplete="off" placeholder="011" inputmode="numeric" pattern="[0-9]*" />
+							</div>
 						</label>
 						<label class="gate-field gate-field--wide">
 							<span>Title</span>
@@ -36,37 +39,16 @@
 					</div>
 
 					<label class="gate-field">
-						<span>Room name</span>
-						<input id="room-name" name="room" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="raw-sessions" required />
+						<span>Room name <small class="gate-hint">— permanent session ID for your crew</small></span>
+						<input id="room-name" name="room" autocomplete="off" autocapitalize="off" spellcheck="false" value="master_sessions_raw" required />
 					</label>
 					<label class="gate-field">
 						<span>Password</span>
 						<input id="room-password" name="password" autocomplete="off" placeholder="optional" />
 					</label>
 
-					<div class="gate-crew">
-						<div class="gate-crew__label">Crew</div>
-						<div class="gate-crew__grid">
-							<div class="crew-chip" data-initials="GA">
-								<span class="crew-chip__dot crew-chip__dot--human"></span>
-								<span>Greg Anthony</span>
-							</div>
-							<div class="crew-chip" data-initials="R">
-								<span class="crew-chip__dot crew-chip__dot--human"></span>
-								<span>Rafa</span>
-							</div>
-							<div class="crew-chip" data-initials="RJ">
-								<span class="crew-chip__dot crew-chip__dot--human"></span>
-								<span>RJ</span>
-							</div>
-							<div class="crew-chip crew-chip--ai" data-initials="MC">
-								<span class="crew-chip__dot crew-chip__dot--ai"></span>
-								<span>Markus <small>AI</small></span>
-							</div>
-						</div>
-					</div>
 
-					<div class="room-gate__actions">
+<div class="room-gate__actions">
 						<button type="button" id="random-room" class="button button--secondary">Random</button>
 						<button type="submit" class="button button--primary">
 							<span class="raw-dot raw-dot--btn"></span>
@@ -484,7 +466,8 @@
 			const form = document.getElementById('room-form');
 			if (!form || !topbar) return;
 			form.addEventListener('submit', function() {
-				const num = epNum ? epNum.value.trim() : '';
+				const rawNum = epNum ? epNum.value.trim().replace(/^EP/i, '') : '';
+				const num = rawNum ? 'EP' + rawNum : '';
 				const title = epTitle ? epTitle.value.trim() : '';
 				if (num || title) {
 					topbar.textContent = [num, title].filter(Boolean).join(' — ');
