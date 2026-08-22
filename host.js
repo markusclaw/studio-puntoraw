@@ -437,7 +437,7 @@ function render() {
 		const others = presentCrew().filter(m => m.id !== runtime.clientId);
 		const sel = document.createElement("select");
 		sel.innerHTML = `<option value="">Pass host…</option>` +
-			others.map(m => `<option value="${m.id}">→ ${escapeHtml(m.name)}</option>`).join("");
+			others.map(m => `<option value="${escapeHtml(m.id)}">→ ${escapeHtml(m.name)}</option>`).join("");
 		sel.disabled = others.length === 0;
 		sel.addEventListener("change", () => { if (sel.value) { passHostTo(sel.value); sel.value = ""; } });
 		c.appendChild(sel);
@@ -474,8 +474,8 @@ function render() {
 				`<div class="kh">Greenroom<span class="n">${knockers.length} waiting</span></div>` +
 				knockers.map(m =>
 					`<div class="krow"><span class="nm">${escapeHtml(m.name)}</span>` +
-					`<button class="admit" data-admit="${m.id}">Admit</button>` +
-					`<button class="deny" data-deny="${m.id}">Deny</button></div>`
+					`<button class="admit" data-admit="${escapeHtml(m.id)}">Admit</button>` +
+					`<button class="deny" data-deny="${escapeHtml(m.id)}">Deny</button></div>`
 				).join("");
 			runtime.el.knock.querySelectorAll("[data-admit]").forEach(b =>
 				b.addEventListener("click", () => admitGuest(b.getAttribute("data-admit"))));

@@ -60,11 +60,21 @@ export class RawStudioRoom extends DurableObject {
 		if ((request.headers.get("Upgrade") || "").toLowerCase() !== "websocket") {
 			return new Response("Expected WebSocket", { status: 426 });
 		}
+		// Origin allowlist — block cross-site WebSocket hijacking. Browsers always
+		// send Origin; empty origin (server-to-server / tooling) is allowed through.
+		const origin = request.headers.get("Origin") || "";
+		const originOk = !origin
+			|| origin === "https://studio.puntoraw.org"
+			|| /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+		if (!originOk) return new Response("Forbidden origin", { status: 403 });
+
 		const url = new URL(request.url);
 		const id = (url.searchParams.get("id") || "").slice(0, 64);
 		const name = ((url.searchParams.get("name") || "").trim() || "Guest").slice(0, 60);
 		const role = this.roleFor(url.searchParams.get("code") || "");
 		if (!id) return new Response("Missing id", { status: 400 });
+		// Validate id charset (UUIDs / fallback ids only) — defense in depth against injection.
+		if (!/^[A-Za-z0-9._-]{1,64}$/.test(id)) return new Response("Bad id", { status: 400 });
 
 		const pair = new WebSocketPair();
 		const client = pair[0];

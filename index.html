@@ -428,13 +428,13 @@
 					}
 				};
 				recognition.onend = function() {
-					if (running) recognition.start(); // auto-restart
+					if (running) { try { recognition.start(); } catch (err) { running = false; btn.textContent = 'Start'; btn.classList.remove('button--danger-soft'); } }
 				};
-				recognition.onerror = function(e) {
+				recognition.onerror = function(e) { const fatal = (e.error === 'not-allowed' || e.error === 'service-not-allowed' || e.error === 'audio-capture'); if (fatal) { running = false; btn.textContent = 'Start'; btn.classList.remove('button--danger-soft'); }
 					if (e.error !== 'no-speech' && e.error !== 'aborted') {
 						const line = document.createElement('div');
 						line.className = 'transcript-line transcript-line--error';
-						line.textContent = '⚠ ' + e.error;
+						line.textContent = fatal ? '⚠ Mic unavailable (' + e.error + '). Check browser permissions, then press Start.' : '⚠ ' + e.error;
 						log.appendChild(line);
 					}
 				};
@@ -486,13 +486,13 @@
 			// Generate OBS URLs when room is set
 			function updateOBSUrls() {
 				const roomEl = document.getElementById('room-copy');
-				if (!roomEl) return;
-				const room = roomEl.textContent || roomEl.innerText || '';
+				/* roomEl optional; room resolved from app state below */
+				const room = (window.studioApp && window.studioApp.state && window.studioApp.state.room) || ((roomEl && (roomEl.textContent || roomEl.innerText) || '').replace(/^Room:\s*/, '').trim());
 				if (!room) return;
 
 				const base = 'https://vdo.ninja/?scene=0&room=' + encodeURIComponent(room);
-				const pw = document.getElementById('room-password-display');
-				const pwStr = (pw && pw.value) ? '&password=' + encodeURIComponent(pw.value) : '';
+				const pwVal = (window.studioApp && window.studioApp.state && window.studioApp.state.password) || '';
+				const pwStr = pwVal ? '&password=' + encodeURIComponent(pwVal) : '';
 
 				const solo = document.getElementById('obs-active-solo');
 				const grid = document.getElementById('obs-grid');
@@ -596,5 +596,35 @@
 })();
 </script>
 
+<script>
+/* Phase 1 - Session & Mode: Build/Live, on-air timer, transcript wiring, episode record. Enhancement over app.js. */
+(function(){
+  function ready(fn){document.readyState!=='loading'?fn():document.addEventListener('DOMContentLoaded',fn);}
+  ready(function(){
+    var root=document.getElementById('studio-root'); var statusBar=document.querySelector('.topbar__status'); if(!root||!statusBar)return;
+    if(document.querySelector('.raw-session')) return;
+    function S(){return (window.studioApp&&window.studioApp.state)||{};}
+    var wrap=document.createElement('div');wrap.className='raw-session';
+    var onair=document.createElement('div');onair.className='raw-onair';onair.innerHTML='<span class="od"></span><span>On Air</span><span class="ot" id="raw-timer">00:00</span>';
+    var edit=document.createElement('button');edit.type='button';edit.className='raw-modetoggle';edit.hidden=true;edit.setAttribute('aria-label','Toggle build or live editing');
+    var primary=document.createElement('button');primary.type='button';primary.className='raw-primary raw-primary--go';primary.textContent='● Go Live';
+    wrap.appendChild(onair);wrap.appendChild(edit);wrap.appendChild(primary);statusBar.appendChild(wrap);
+    var warn=document.createElement('div');warn.className='raw-editwarn';warn.innerHTML='<span>● Live — editing. Back to Live when done.</span>';document.body.appendChild(warn);
+    var timerInt=null,confirmT=null,editT=null,startedAt=null;
+    function setMode(m){root.dataset.mode=m;document.body.dataset.mode=m;if(window.studioApp&&window.studioApp.state)window.studioApp.state.mode=m;edit.textContent=(m==='live')?'Edit':'Back to Live';if(m==='live'){var c=document.querySelector('.tabs .tab-button[data-tab="sources"]');if(c&&c.getAttribute('aria-selected')!=='true')c.click();}}
+    function transcript(a){var b=document.getElementById('transcript-toggle');if(!b)return;var run=b.textContent.trim()==='Stop';if(a==='start'&&!run)b.click();if(a==='stop'&&run)b.click();}
+    function fmt(ms){var s=Math.floor(ms/1000);var h=Math.floor(s/3600);var m=Math.floor((s%3600)/60);var ss=s%60;return (h>0?h+':':'')+String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0');}
+    function tick(){var t=document.getElementById('raw-timer');if(t&&startedAt)t.textContent=fmt(Date.now()-startedAt);}
+    function goLive(){startedAt=Date.now();if(window.studioApp&&window.studioApp.state)window.studioApp.state.session={live:true,startedAt:startedAt,endedAt:null};document.body.dataset.session='live';setMode('live');edit.hidden=false;primary.className='raw-primary raw-primary--end';primary.textContent='■ End Session';transcript('start');clearInterval(timerInt);timerInt=setInterval(tick,1000);tick();}
+    function endSession(){clearInterval(timerInt);timerInt=null;var s=startedAt||Date.now(),e=Date.now();transcript('stop');saveEpisode(s,e);startedAt=null;if(window.studioApp&&window.studioApp.state)window.studioApp.state.session={live:false,startedAt:null,endedAt:e};document.body.dataset.session='idle';setMode('build');edit.hidden=true;primary.className='raw-primary raw-primary--go';primary.textContent='● Go Live';toast('Session ended · '+fmt(e-s)+' · '+participants().length+' participant(s)');}
+    function participants(){try{var src=S().sources;if(!src||!src.forEach)return[];var o=[];src.forEach(function(x){if(x&&!x.disconnected&&!x.placeholder&&!x.queued)o.push(x.label||x.streamID||'Guest');});return o;}catch(e){return[];}}
+    function saveEpisode(s,e){var rec={room:S().room||'',episode:(document.getElementById('topbar-episode')||{}).textContent||'',startedAt:s,endedAt:e,durationMs:e-s,participants:participants(),transcript:((document.getElementById('transcript-log')||{}).innerText||'').trim()};try{var k='raw.episodes.'+(rec.room||'default');var a=JSON.parse(localStorage.getItem(k)||'[]');a.push(rec);localStorage.setItem(k,JSON.stringify(a).slice(0,500000));}catch(e2){}try{console.log('[.RAW] episode recorded',rec);}catch(e3){}}
+    function toast(m){var t=document.createElement('div');t.textContent=m;t.style.cssText='position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:9999;background:#1c1a18;color:#E6DFD2;border:1px solid rgba(255,255,255,.14);padding:9px 16px;border-radius:8px;font-family:monospace;font-size:12px;box-shadow:0 10px 30px rgba(0,0,0,.5)';document.body.appendChild(t);setTimeout(function(){t.remove();},3600);}
+    primary.addEventListener('click',function(){if(document.body.dataset.session!=='live'){goLive();return;}if(primary.dataset.confirm==='1'){clearTimeout(confirmT);primary.dataset.confirm='';primary.classList.remove('raw-primary--confirm');endSession();return;}primary.dataset.confirm='1';primary.classList.add('raw-primary--confirm');primary.textContent='Confirm end?';confirmT=setTimeout(function(){primary.dataset.confirm='';primary.classList.remove('raw-primary--confirm');primary.textContent='■ End Session';},3000);});
+    edit.addEventListener('click',function(){if(root.dataset.mode==='live'){if(edit.dataset.confirm==='1'){clearTimeout(editT);edit.dataset.confirm='';setMode('build');return;}edit.dataset.confirm='1';edit.textContent='Edit live?';editT=setTimeout(function(){edit.dataset.confirm='';edit.textContent='Edit';},3000);}else{setMode('live');}});
+    document.body.dataset.session='idle';setMode('build');
+  });
+})();
+</script>
 </body>
 </html>

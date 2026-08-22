@@ -1913,3 +1913,48 @@ button {
   padding:12px!important;box-shadow:0 20px 60px rgba(0,0,0,.6);}
 .program-panel[data-layouts="open"] .layout-strip{display:grid!important;}
 .raw-layouts-btn[aria-expanded="true"]{color:var(--offwhite,#E6DFD2)!important;background:var(--panel-2,#1a1917)!important;}
+
+
+/* ============================================================
+   MOBILE COLLAPSE RESET — on phones the collapsed-sidebar grid
+   rules must not override the single-column layout.
+   ============================================================ */
+@media (max-width:900px){
+  .studio-workspace[data-left="collapsed"],
+  .studio-workspace[data-right="collapsed"],
+  .studio-workspace[data-left="collapsed"][data-right="collapsed"]{grid-template-columns:1fr;}
+  .studio-workspace[data-left="collapsed"] .scenes-panel>*:not(.raw-rail),
+  .studio-workspace[data-right="collapsed"] .control-panel>*:not(.raw-rail){display:revert !important;}
+  .studio-workspace[data-left="collapsed"] .scenes-panel .raw-rail,
+  .studio-workspace[data-right="collapsed"] .control-panel .raw-rail{display:none !important;}
+}
+
+
+/* ============================================================
+   PHASE 1 — SESSION & MODE (Build <-> Live, on-air, session timer)
+   Self-contained enhancement layer over app.js/host.js.
+   ============================================================ */
+:root{ --rec:#E0483B; --ok:#5FA46A; --warn:#E5A63C; }
+.raw-session{display:flex;align-items:center;gap:10px;margin-left:8px}
+.raw-onair{display:none;align-items:center;gap:8px;padding:5px 11px;border-radius:7px;border:1px solid rgba(224,72,59,.45);background:rgba(224,72,59,.1);color:#ff8f84;font-family:var(--mono,ui-monospace,monospace);font-size:11px;letter-spacing:.14em;text-transform:uppercase;white-space:nowrap}
+.raw-onair .od{width:8px;height:8px;border-radius:50%;background:#E0483B;box-shadow:0 0 10px rgba(224,72,59,.7);animation:rawpulse 1.5s ease-in-out infinite}
+.raw-onair .ot{font-variant-numeric:tabular-nums;color:#E6DFD2;letter-spacing:.06em}
+@keyframes rawpulse{50%{opacity:.35}}
+body[data-session="live"] .raw-onair{display:inline-flex}
+.raw-primary{font-family:inherit;font-size:12px;letter-spacing:.06em;cursor:pointer;border-radius:7px;padding:9px 15px;border:1px solid transparent;white-space:nowrap;transition:background .15s,border-color .15s,color .15s}
+.raw-primary--go{background:var(--bronze,#C6763B);color:#1a120b;font-weight:600;border-color:var(--bronze,#C6763B)}
+.raw-primary--go:hover{background:#d5843f}
+.raw-primary--end{background:transparent;color:#ff8f84;border-color:rgba(224,72,59,.5)}
+.raw-primary--end:hover{background:rgba(224,72,59,.12)}
+.raw-primary--confirm{background:#E0483B;color:#150c0a;border-color:#E0483B;font-weight:600}
+.raw-modetoggle{font-family:inherit;font-size:11px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;background:transparent;border:1px solid var(--line,rgba(255,255,255,.12));color:var(--smoke,#948B7E);border-radius:6px;padding:8px 12px}
+.raw-modetoggle:hover{color:var(--offwhite,#E6DFD2)}
+.raw-modetoggle[hidden]{display:none}
+.raw-editwarn{display:none;position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:9997;align-items:center;gap:10px;padding:7px 14px;border-radius:8px;font-family:var(--mono,ui-monospace,monospace);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#150c0a;background:var(--warn,#E5A63C);box-shadow:0 8px 30px rgba(0,0,0,.4)}
+body[data-session="live"][data-mode="build"] .raw-editwarn{display:flex}
+#studio-root[data-mode="live"] .raw-layouts-btn,
+#studio-root[data-mode="live"] .program-toolbar__actions,
+#studio-root[data-mode="live"] .scenes-panel .panel-heading__actions,
+#studio-root[data-mode="live"] .control-panel .tabs .tab-button:not([data-tab="sources"]){display:none}
+#studio-root[data-mode="live"] .layout-preset{pointer-events:none;opacity:.5}
+
