@@ -1,0 +1,17 @@
+name = "raw-studio-host"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
+
+# Durable Object binding — the per-room authoritative host badge.
+[[durable_objects.bindings]]
+name = "RAW_ROOM"
+class_name = "RawStudioRoom"
+
+# SQLite-backed DO (required for new namespaces; works on the Workers Free plan).
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RawStudioRoom"]
+
+# Optional: restrict access with a shared key. Do NOT put the secret here —
+# set it with:  wrangler secret put AUTH_KEY
+# Then pass ?key=... from the client (host.js CONFIG.workerKey).

@@ -1,0 +1,14 @@
+{
+  "name": "raw-studio-host",
+  "version": "0.1.0",
+  "private": true,
+  "description": ".RAW Sessions host-badge coordination Worker (Durable Object over WebSockets)",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}
