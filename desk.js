@@ -14,7 +14,7 @@
     if(stageShell.parentNode){ stageShell.parentNode.insertBefore(desk, stageShell.nextSibling); }
     var rack=desk.querySelector('#raw-desk-rack');
 
-    var solo={}, faders={}, lastSig='';
+    var solo={}, faders={}, lastSig='', soloSnapshot=null;
     function app(){ return window.studioApp; }
     function state(){ var a=app(); return a&&a.state; }
     function esc(x){ return String(x||'').replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];}); }
@@ -26,12 +26,32 @@
     function channels(){
       var byName={}, order=[];
       seatList().forEach(function(p){ var k=(p.label||'').toLowerCase(); if(k&&!byName[k]){ byName[k]={name:p.label,live:null,slot:p.slot||90}; order.push(k);} });
-      liveList().forEach(function(s){ var k=(s.label||s.streamID||'').toLowerCase(); if(!byName[k]){ byName[k]={name:s.label||'Guest',live:s,slot:s.slot||50}; order.push(k);} else { byName[k].live=s; } });
+      liveList().forEach(function(s){
+        var lbl=(s.label||'').toLowerCase();
+        // Attach to a matching named seat only if that seat has no live feed yet.
+        if(lbl && byName[lbl] && !byName[lbl].live){ byName[lbl].live=s; return; }
+        // Otherwise give each feed its OWN strip keyed by streamID, so two guests
+        // sharing a name (e.g. both "Guest") don't collapse into one channel.
+        var k='id:'+(s.streamID||lbl||order.length);
+        if(!byName[k]){ byName[k]={name:s.label||'Guest',live:s,slot:s.slot||50}; order.push(k); }
+        else { byName[k].live=s; }
+      });
       return order.map(function(k){return byName[k];}).sort(function(a,b){return (a.slot||90)-(b.slot||90);});
     }
 
     function setMute(id,want){ var a=app(),st=state(); if(!a||!st)return; var s=st.sources.get(id); if(!s)return; if(!!s.muted!==!!want) a.toggleSourceControl(id,'mic'); }
-    function reconcileSolo(){ var any=Object.keys(solo).some(function(k){return solo[k];}); liveList().forEach(function(s){ setMute(s.streamID, any? !solo[s.streamID] : false); }); }
+    function reconcileSolo(){
+      var any=Object.keys(solo).some(function(k){return solo[k];});
+      if(any){
+        // Remember each channel's mute state the moment solo first engages.
+        if(!soloSnapshot){ soloSnapshot={}; liveList().forEach(function(s){ soloSnapshot[s.streamID]=!!s.muted; }); }
+        liveList().forEach(function(s){ setMute(s.streamID, !solo[s.streamID]); });
+      } else {
+        // Solo cleared: restore what was muted before, don't blanket-unmute.
+        liveList().forEach(function(s){ setMute(s.streamID, soloSnapshot ? !!soloSnapshot[s.streamID] : false); });
+        soloSnapshot=null;
+      }
+    }
 
     function build(chs){
       rack.innerHTML='';
@@ -66,7 +86,7 @@
     function maybeBuild(){ var chs=channels(); var sig=chs.map(function(c){return c.name+':'+(c.live?c.live.streamID:'-');}).join('|'); if(sig!==lastSig){ lastSig=sig; build(chs); } }
 
     // live poll: meters + mute/solo/state (no rebuild, so faders aren't interrupted)
-    setInterval(function(){
+    function poll(){
       var st=state(); if(!st) return;
       rack.querySelectorAll('.raw-strip[data-sid]').forEach(function(strip){
         var s=st.sources.get(strip.dataset.sid);
@@ -77,11 +97,20 @@
       });
       var mx=0; if(st.sources) st.sources.forEach(function(s){ if(!s.placeholder && (s.loudness||0)>mx) mx=s.loudness; });
       var mf=rack.querySelector('.raw-vu--master .raw-vu__fill'); if(mf) mf.style.height=Math.min(100,mx)+'%';
-    }, 200);
+    }
 
     var list=document.getElementById('source-list');
     if(list) new MutationObserver(maybeBuild).observe(list,{childList:true,subtree:true});
-    setInterval(maybeBuild, 1500);
+
+    // F4: hold interval handles and pause them while the tab is hidden, so the
+    // desk isn't burning a 200ms meter loop in the background all show long.
+    var meterTimer=0, buildTimer=0;
+    function startTimers(){ if(!meterTimer) meterTimer=setInterval(poll,200); if(!buildTimer) buildTimer=setInterval(maybeBuild,1500); }
+    function stopTimers(){ if(meterTimer){ clearInterval(meterTimer); meterTimer=0; } if(buildTimer){ clearInterval(buildTimer); buildTimer=0; } }
+    document.addEventListener('visibilitychange', function(){
+      if(document.hidden){ stopTimers(); } else { startTimers(); maybeBuild(); }
+    });
+    startTimers();
     maybeBuild();
 
     if(list) list.addEventListener('click', function(e){ var card=e.target.closest('.source-card'); if(!card)return; var id=card.dataset.sourceId; rack.querySelectorAll('.raw-strip').forEach(function(s){ s.classList.toggle('raw-strip--focus', !!id && s.dataset.sid===id); }); });

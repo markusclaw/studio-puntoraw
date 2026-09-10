@@ -172,7 +172,14 @@ function connectSocket() {
 			// Guests belong in the branded greenroom, not the director console.
 			if (myRole() === "guest" && !runtime._redirected) {
 				runtime._redirected = true;
-				location.replace("greenroom.html?room=" + encodeURIComponent(getRoom()) + "&name=" + encodeURIComponent(runtime.name || ""));
+				// Carry the room password so the guest publishes into the SAME
+				// encrypted room the console listens on (else their video is dropped).
+				var _p = new URLSearchParams(location.search);
+				var _pass = (window.studioApp && window.studioApp.state && window.studioApp.state.password)
+					|| _p.get("password") || _p.get("pass") || _p.get("pw") || "";
+				var _gr = "greenroom.html?room=" + encodeURIComponent(getRoom()) + "&name=" + encodeURIComponent(runtime.name || "");
+				if (_pass) _gr += "&password=" + encodeURIComponent(_pass);
+				location.replace(_gr);
 				return;
 			}
 			render();

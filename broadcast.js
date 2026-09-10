@@ -66,9 +66,18 @@
     }
 
     /* ---- hotkeys ---- */
+    function typingIn(el){
+      if(!el) return false;
+      if(el.isContentEditable) return true;
+      var t=(el.tagName||'').toUpperCase();
+      return t==='INPUT'||t==='TEXTAREA'||t==='SELECT';
+    }
     document.addEventListener('keydown', function(e){
       var mod=e.metaKey||e.ctrlKey;
       if(!mod) return;
+      // Don't hijack Cmd+Enter / Cmd+Shift+. / Cmd+Shift+L while the user is
+      // typing (transcript notes, name/code fields, the room password, etc.).
+      if(typingIn(e.target)||typingIn(document.activeElement)) return;
       // Cmd/Ctrl+Enter -> Go Live / End session
       if(e.key==='Enter'){ var p=document.querySelector('.raw-primary'); if(p){ e.preventDefault(); p.click(); } return; }
       // Cmd/Ctrl+Shift+.  -> emergency cut to standby (+tone)

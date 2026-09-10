@@ -356,42 +356,61 @@
 		<!-- ── TV Static effect for empty stage ── -->
 		<script>
 		(function(){
-			const c = document.getElementById('static-canvas');
-			if (!c) return;
-			const ctx = c.getContext('2d');
-			let raf;
+			const stage = document.getElementById('stage');
+			const empty = document.getElementById('stage-empty');
+			if (!stage || !empty) return;
+			let c = null, ctx = null, raf = 0;   // single owned handle; 0 = not running
+
+			// app.js writes stageEmpty.textContent on renderLayout, which wipes our
+			// canvas + label. Re-create them if they're gone so the NO SIGNAL card
+			// stays reliable. Only ever called while the stage is empty.
+			function ensureCanvas() {
+				if (!c || !c.isConnected) {
+					c = empty.querySelector('#static-canvas');
+					if (!c) {
+						c = document.createElement('canvas');
+						c.id = 'static-canvas'; c.className = 'static-canvas';
+						empty.insertBefore(c, empty.firstChild);
+						if (!empty.querySelector('.stage-empty__text')) {
+							const t = document.createElement('div');
+							t.className = 'stage-empty__text'; t.textContent = 'NO SIGNAL';
+							empty.appendChild(t);
+						}
+					}
+					ctx = c.getContext('2d');
+					resize();
+				}
+			}
 			function resize() {
+				if (!c) return;
 				const r = c.parentElement.getBoundingClientRect();
-				c.width = Math.round(r.width / 2.5);
-				c.height = Math.round(r.height / 2.5);
+				c.width = Math.round((r.width || 0) / 2.5);
+				c.height = Math.round((r.height || 0) / 2.5);
 			}
-			function draw() {
-				const w = c.width, h = c.height;
-				if (!w || !h) { raf = requestAnimationFrame(draw); return; }
-				const img = ctx.createImageData(w, h);
-				const d = img.data;
-				for (let i = 0; i < d.length; i += 4) {
-					const v = Math.random() * 40 | 0;
-					d[i] = d[i+1] = d[i+2] = v;
-					d[i+3] = 255;
+			function frame() {
+				const w = c && c.width, h = c && c.height;
+				if (ctx && w && h) {
+					const img = ctx.createImageData(w, h);
+					const d = img.data;
+					for (let i = 0; i < d.length; i += 4) {
+						const v = Math.random() * 40 | 0;
+						d[i] = d[i+1] = d[i+2] = v;
+						d[i+3] = 255;
+					}
+					ctx.putImageData(img, 0, 0);
 				}
-				ctx.putImageData(img, 0, 0);
-				raf = requestAnimationFrame(draw);
+				raf = requestAnimationFrame(frame);
 			}
-			resize();
-			draw();
-			window.addEventListener('resize', resize);
-			// Stop static when stage gets content
-			const obs = new MutationObserver(() => {
-				const empty = document.getElementById('stage-empty');
-				if (empty && empty.classList.contains('hidden')) {
-					cancelAnimationFrame(raf);
-				} else if (empty && !empty.classList.contains('hidden')) {
-					draw();
-				}
-			});
-			const root = document.getElementById('studio-root');
-			if (root) obs.observe(root, { attributes: true, subtree: true, attributeFilter: ['class'] });
+			function start() { if (!raf) { ensureCanvas(); raf = requestAnimationFrame(frame); } }  // guarded: never stacks loops
+			function stop()  { if (raf) { cancelAnimationFrame(raf); raf = 0; } }
+			// Real signal: parent #stage[data-has-layout]. "true" => feeds present.
+			function sync() { stage.dataset.hasLayout === 'true' ? stop() : start(); }
+			window.addEventListener('resize', function(){ if (raf) resize(); });
+			// Watch the layout flag on #stage, and re-ensure the canvas if app.js
+			// rewrites #stage-empty's children out from under us.
+			new MutationObserver(sync).observe(stage, { attributes: true, attributeFilter: ['data-has-layout'] });
+			new MutationObserver(function(){ if (raf) ensureCanvas(); }).observe(empty, { childList: true });
+			sync();  // start iff the stage is currently empty
 		})();
 		</script>
 
@@ -903,7 +922,7 @@
    always opens with our seats. Guests are still added via the + button.
    Seeds a single time (flag) so removing/renaming a seat later is respected. */
 (function(){
-  var KEY='raw.seats.seeded.v1';
+  var KEY='raw.seats.seeded.v2';   // v2: pin explicit stage slots 1/2/3 so host seats always lead
   function ready(fn){document.readyState!=='loading'?fn():document.addEventListener('DOMContentLoaded',fn);}
   ready(function(){
     var tries=0;
@@ -912,18 +931,16 @@
       if(app && app.state && Array.isArray(app.state.placeholders)){
         try{
           if(!localStorage.getItem(KEY)){
-            var st=app.state, seats=['RJ','Greg','Rafa'], have={};
+            // Reserve the top three stage slots for the standing hosts, in order,
+            // so an early-arriving stray peer can never outrank them for Spotlight.
+            var st=app.state, seats=[{n:'RJ',slot:1},{n:'Greg',slot:2},{n:'Rafa',slot:3}], have={};
             (st.placeholders||[]).forEach(function(p){ if(p&&p.label) have[String(p.label).toLowerCase()]=1; });
             if(st.sources) st.sources.forEach(function(s){ if(s&&s.label) have[String(s.label).toLowerCase()]=1; });
-            function nextSlot(){ var m=0;
-              (st.placeholders||[]).forEach(function(p){ if((p.slot||0)>m)m=p.slot; });
-              if(st.sources) st.sources.forEach(function(s){ if((s.slot||0)>m)m=s.slot; });
-              return m+1; }
             var added=0;
-            seats.forEach(function(nm){
-              if(have[nm.toLowerCase()]) return;
-              st.placeholders.push({ streamID:'seat_'+nm.toLowerCase()+'_'+Date.now()+'_'+Math.floor(Math.random()*1e6),
-                label:nm, slot:nextSlot(), placeholder:true, host:true });
+            seats.forEach(function(seat){
+              if(have[seat.n.toLowerCase()]) return;
+              st.placeholders.push({ streamID:'seat_'+seat.n.toLowerCase()+'_'+Date.now()+'_'+Math.floor(Math.random()*1e6),
+                label:seat.n, slot:seat.slot, placeholder:true, host:true });
               added++;
             });
             localStorage.setItem(KEY,'1');
@@ -996,32 +1013,44 @@
 <script src="./broadcast.js" defer></script>
 <script src="./jumpin.js" defer></script>
 <script>
-/* Auto-cleanup: prune dead/ghost sources so stale peers can't squat slots or
-   steal the Spotlight. A source that never brings video within the grace window
-   (dead peer), or that has been disconnected a while, is dropped. Real feeds
-   (which have a thumbnail) are always kept. Enhancement over app.js. */
+/* Auto-cleanup (v2): prune ONLY anonymous ghost peers — stray browser/test tabs
+   that join the room with no camera and no human name. app.js already retires
+   truly-disconnected peers on its own, and it never fetches thumbnails for
+   camera-off (videoMuted) or greenroom (queued) sources — so the old "no
+   thumbnail => ghost" test wrongly deleted real people. This version keys off
+   the LABEL instead: everyone who joins via Jump In / greenroom carries a real
+   name (label !== streamID), so we only ever cull nameless, never-video peers. */
 (function(){
   function ready(fn){document.readyState!=='loading'?fn():document.addEventListener('DOMContentLoaded',fn);}
   ready(function(){
-    var meta={};
+    var meta={};                         // per-source: first-seen + ever-had-video
+    var GRACE=25000;                     // give a real join plenty of time to show up
     function app(){ return window.studioApp; }
+    function isSeat(id){ return /^seat_/.test(id||''); }
+    function anonymous(s){                // no human name assigned to this stream
+      return !s.label || String(s.label)===String(s.streamID);
+    }
+    function alive(s){                    // anything a real participant would be
+      return s.placeholder || s.queued || s.videoMuted || !anonymous(s);
+    }
     function sweep(){
       var a=app(); if(!a||!a.state||!a.state.sources) return;
       var st=a.state, now=Date.now(), kill=[];
       st.sources.forEach(function(s,id){
-        if(!s || s.placeholder) return;
-        var m=meta[id]||(meta[id]={first:now,ever:false,disc:0});
-        if(s.thumbnailUrl) m.ever=true;                       // has (or had) real video
-        if(s.disconnected){ if(!m.disc) m.disc=now; } else { m.disc=0; }
-        if((!m.ever && (now-m.first)>20000) ||                // ghost: no video for 20s
-           (m.disc && (now-m.disc)>12000)) kill.push(id);     // gone for 12s
+        if(!s || isSeat(id) || s.placeholder) return;
+        var m=meta[id]||(meta[id]={first:now,ever:false});
+        if(s.thumbnailUrl) m.ever=true;                 // has (or had) real video → keep forever
+        if(alive(s)) return;                            // named / camera-off / queued → keep
+        // remaining: anonymous, never named. Only cull once it's clearly a dead
+        // no-video tab (past grace AND never produced a single frame).
+        if(!m.ever && (now-m.first)>GRACE) kill.push(id);
       });
       if(kill.length){
         kill.forEach(function(id){ try{ st.sources.delete(id); }catch(e){} delete meta[id]; });
         try{ if(a.activateScene && st.activeSceneId) a.activateScene(st.activeSceneId); }catch(e){}
       }
     }
-    setInterval(sweep,4000); setTimeout(sweep,8000);
+    setInterval(sweep,5000); setTimeout(sweep,10000);
   });
 })();
 </script>

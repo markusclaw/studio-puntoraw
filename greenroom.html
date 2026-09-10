@@ -119,6 +119,10 @@ const WORKER_URL = "wss://raw-studio-host.rovelo-ga.workers.dev";
 const VDO_BASE = "https://vdo.ninja";
 const params = new URLSearchParams(location.search);
 const ROOM = params.get("room") || "master_sessions_raw";
+// Room password (VDO encryption key). MUST match the console's director/scene
+// URLs or the guest's video silently never reaches the console. Carried in the
+// invite link + guest redirect. Empty = VDO default (matches an unset console).
+const PASS = params.get("password") || params.get("pass") || params.get("pw") || "";
 const CLIENT_ID_KEY = "raw.host.clientId";
 
 function id(x){ return document.getElementById(x); }
@@ -231,6 +235,7 @@ let socket=null, connected=false, admitted=false, reconnectDelay=1000, rt=null;
 
 function startCamera(){
   let q = "room="+encodeURIComponent(ROOM)+"&webcam&label="+encodeURIComponent(NAME)+"&cleanoutput&autostart";
+  if(PASS) q += "&password="+encodeURIComponent(PASS);   // match the console's room, else video is dropped
   // Best-effort: ask VDO for the devices chosen in preflight (matched by label; falls back to default).
   const camLabel = els.camSel.selectedOptions[0] ? els.camSel.selectedOptions[0].textContent : "";
   const micLabel = els.micSel.selectedOptions[0] ? els.micSel.selectedOptions[0].textContent : "";
@@ -292,6 +297,13 @@ function enter(){
 }
 els.enterBtn.addEventListener("click", enter);
 els.nameInput.addEventListener("keydown", e=>{ if(e.key==="Enter") enter(); });
+
+// F8: stop the preview camera + mic meter if the guest leaves before entering
+// (enter() already tears these down on the normal path).
+window.addEventListener("pagehide", function(){
+  try{ stopMeter(); }catch(e){}
+  if(previewStream){ try{ previewStream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){} previewStream=null; }
+});
 
 initPreflight();
 </script>
