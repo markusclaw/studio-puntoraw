@@ -322,6 +322,11 @@ async function buildInviteUrl() {
   // Guests join through the branded greenroom on our own origin (not a raw vdo.ninja link).
   const url = new URL("greenroom.html", location.href);
   url.searchParams.set("room", state.room);
+  // Carry the room password so the guest publishes into the same encrypted room
+  // the console listens on; without it their video is silently dropped.
+  if (state.password) {
+    url.searchParams.set("password", state.password);
+  }
   return url.href;
 }
 
