@@ -508,14 +508,9 @@ function init() {
 	injectStyles();
 	buildUI();
 
-	// Auto-rejoin if we have a saved identity.
-	const saved = loadIdentity();
-	if (saved && saved.name) {
-		runtime.name = saved.name;
-		runtime.code = saved.code || "";
-		runtime.joinedAt = now();
-		startTransport();
-	}
+	// Auto-rejoin disabled: the Jump In chooser is the entry point, so we
+	// always show the seat picker and never silently rejoin a stale
+	// identity (which could redirect a guest to the greenroom on load).
 	render();
 
 	window.addEventListener("beforeunload", () => {
