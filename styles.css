@@ -2393,3 +2393,7 @@ body[data-transcript="on"] .raw-tr-live{display:inline-block}
 .raw-jumpin .ji-av{width:100%;height:auto;aspect-ratio:1/1;border-radius:12px;
   border:1px solid rgba(255,255,255,.12);box-shadow:0 6px 16px rgba(0,0,0,.45)}
 .raw-jumpin .ji-tile--guest .ji-av{filter:grayscale(.45) opacity(.9)}
+
+/* Fix: the hidden attribute must actually hide the Jump In overlay
+   (its display:flex above was overriding [hidden]). */
+.raw-jumpin[hidden]{display:none!important}
