@@ -2353,3 +2353,36 @@ body[data-transcript="on"] .raw-tr-live{display:inline-block}
 
 /* Feeds edge-to-edge: thin hairline between touching layout boxes. */
 #studio-root .stage-overlay .layout-box{border:1px solid rgba(255,255,255,.14)!important}
+
+/* ============================================================
+   JUMP IN — avatar chooser fronting the identity gate.
+   ============================================================ */
+.raw-jumpin{position:fixed;inset:0;z-index:10001;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(ellipse 80% 70% at 50% 40%, rgba(20,17,15,.72), rgba(6,5,5,.92));backdrop-filter:blur(6px)}
+.raw-jumpin .ji-card{width:min(560px,calc(100vw - 32px));padding:26px 26px 20px;border-radius:16px;
+  background:linear-gradient(180deg,#1a1817,#121110);border:1px solid rgba(255,255,255,.08);
+  box-shadow:0 30px 80px rgba(0,0,0,.6);font-family:var(--mono,ui-monospace,monospace)}
+.raw-jumpin .ji-head{display:flex;align-items:center;gap:9px;margin-bottom:2px}
+.raw-jumpin .ji-dot{width:9px;height:9px;border-radius:50%;background:#D6412B;box-shadow:0 0 10px rgba(224,72,59,.7)}
+.raw-jumpin .ji-brand{font-size:15px;letter-spacing:.04em;color:#ECE7DD}
+.raw-jumpin .ji-brand b{color:var(--bronze,#C6763B);font-weight:800}
+.raw-jumpin .ji-title{font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:rgba(236,231,221,.5);margin:2px 0 18px}
+.raw-jumpin .ji-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+@media (max-width:520px){.raw-jumpin .ji-tiles{grid-template-columns:repeat(2,1fr)}}
+.raw-jumpin .ji-tile{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 8px 12px;cursor:pointer;
+  border-radius:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);transition:all .14s ease}
+.raw-jumpin .ji-tile:hover{background:rgba(255,255,255,.06);border-color:var(--bronze,#C6763B);transform:translateY(-2px)}
+.raw-jumpin .ji-tile--active{border-color:var(--bronze,#C6763B);background:rgba(198,118,59,.1)}
+.raw-jumpin .ji-av{width:64px;height:64px;border-radius:50%;background-size:cover;background-position:center;
+  border:2px solid rgba(255,255,255,.14);box-shadow:0 4px 14px rgba(0,0,0,.45)}
+.raw-jumpin .ji-tile--guest .ji-av{filter:grayscale(.5) opacity(.85)}
+.raw-jumpin .ji-name{font-size:14px;color:#ECE7DD;font-weight:600}
+.raw-jumpin .ji-role{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:rgba(236,231,221,.45)}
+.raw-jumpin .ji-guest{display:flex;gap:8px;margin-top:16px}
+.raw-jumpin .ji-guest[hidden]{display:none}
+.raw-jumpin .ji-guest-name{flex:1;min-width:0;background:#0d0c0b;border:1px solid rgba(255,255,255,.12);border-radius:8px;
+  color:#ECE7DD;font-family:inherit;font-size:14px;padding:11px 12px}
+.raw-jumpin .ji-guest-name:focus{outline:1px solid var(--bronze,#C6763B)}
+.raw-jumpin .ji-guest-go{background:var(--bronze,#C6763B);border:0;border-radius:8px;color:#1a120b;font-family:inherit;
+  font-size:12px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;padding:0 16px;cursor:pointer}
+.raw-jumpin .ji-foot{margin-top:16px;font-size:10px;letter-spacing:.06em;color:rgba(236,231,221,.4);text-align:center}
