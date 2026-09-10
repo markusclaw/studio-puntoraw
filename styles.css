@@ -2397,3 +2397,18 @@ body[data-transcript="on"] .raw-tr-live{display:inline-block}
 /* Fix: the hidden attribute must actually hide the Jump In overlay
    (its display:flex above was overriding [hidden]). */
 .raw-jumpin[hidden]{display:none!important}
+
+/* ============================================================
+   HOSTCAM (A1) — remote host's own camera publisher + Cam button.
+   The publisher iframe must keep running to publish, so it is
+   parked off-screen (never display:none, which can suspend media).
+   ============================================================ */
+.raw-hostcam-pub{
+  position:fixed; left:-10000px; top:auto; bottom:0;
+  width:2px; height:2px; opacity:0; pointer-events:none; overflow:hidden;
+}
+.raw-hostcam-pub iframe{width:2px;height:2px;border:0}
+.raw-hostcam-btn.on{
+  color:#1a120b!important; background:#d9524b!important; border-color:#d9524b!important;
+  font-weight:600; box-shadow:0 2px 12px rgba(217,82,75,.4)!important;
+}
