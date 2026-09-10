@@ -362,8 +362,8 @@
 			let raf;
 			function resize() {
 				const r = c.parentElement.getBoundingClientRect();
-				c.width = Math.round(r.width / 4);
-				c.height = Math.round(r.height / 4);
+				c.width = Math.round(r.width / 2.5);
+				c.height = Math.round(r.height / 2.5);
 			}
 			function draw() {
 				const w = c.width, h = c.height;
@@ -572,14 +572,13 @@
     var btn=document.createElement('button');
     btn.type='button'; btn.className='button button--secondary raw-layouts-btn';
     btn.setAttribute('aria-expanded','false'); btn.setAttribute('aria-label','Layout presets');
-    btn.innerHTML='<i class="las la-th-large" style="margin-right:6px"></i>Layouts';
+    btn.innerHTML='<i class="las la-th-large" style="margin-right:6px"></i>More';
     actions.insertBefore(btn, actions.firstChild);
     function place(){
       var pr=panel.getBoundingClientRect(), br=btn.getBoundingClientRect();
       strip.style.top=(br.bottom-pr.top+6)+'px';
-      var w=strip.offsetWidth||300, left=br.left-pr.left, max=pr.width-w-16;
-      if(left>max) left=max; if(left<16) left=16;
-      strip.style.left=left+'px'; strip.style.right='auto';
+      var right=pr.right-br.right; if(right<8) right=8;
+      strip.style.right=right+'px'; strip.style.left='auto';
     }
     function open(v){
       panel.setAttribute('data-layouts', v?'open':'closed');
@@ -794,19 +793,19 @@
   ready(function(){
     var canvases=[], last=0;
     function loop(ts){
-      if(ts-last>66){ last=ts;
+      if(ts-last>33){ last=ts;
         for(var i=canvases.length-1;i>=0;i--){ var cv=canvases[i];
           if(!cv.isConnected){ canvases.splice(i,1); continue; }
           var w=cv.width,h=cv.height,ctx=cv._ctx; if(!ctx) continue;
           var img=ctx.createImageData(w,h), d=img.data;
-          for(var y=0;y<h;y++){ var sl=(y&1)?0.6:1; for(var x=0;x<w;x++){ var idx=(y*w+x)*4; var v=(Math.random()*255*sl)|0; d[idx]=v; d[idx+1]=v; d[idx+2]=v; d[idx+3]=255; } }
+          for(var j=0;j<d.length;j+=4){ var v=(Math.random()*40)|0; d[j]=d[j+1]=d[j+2]=v; d[j+3]=255; }
           ctx.putImageData(img,0,0);
         }
       }
       requestAnimationFrame(loop);
     }
     requestAnimationFrame(loop);
-    function add(host){ if(!host||host.querySelector(':scope > .raw-static-cv'))return; var cv=document.createElement('canvas'); cv.className='raw-static-cv'; cv.width=256; cv.height=144; try{cv._ctx=cv.getContext('2d');}catch(e){return;} host.insertBefore(cv, host.firstChild); canvases.push(cv); if(!host.querySelector(':scope > .raw-sig')){ var sg=document.createElement('div'); sg.className='raw-sig'; sg.innerHTML='<span class="d"></span>No signal'; host.appendChild(sg); } }
+    function add(host){ if(!host||host.querySelector(':scope > .raw-static-cv'))return; var cv=document.createElement('canvas'); cv.className='raw-static-cv'; var rr=host.getBoundingClientRect(); cv.width=Math.max(64,Math.min(384,Math.round((rr.width||256)/2.5))); cv.height=Math.max(36,Math.min(216,Math.round((rr.height||144)/2.5))); try{cv._ctx=cv.getContext('2d');}catch(e){return;} host.insertBefore(cv, host.firstChild); canvases.push(cv); if(!host.querySelector(':scope > .raw-sig')){ var sg=document.createElement('div'); sg.className='raw-sig'; sg.innerHTML='<span class="d"></span>No signal'; host.appendChild(sg); } }
     function drop(host){ if(!host)return; var cv=host.querySelector(':scope > .raw-static-cv'); if(cv){ var i=canvases.indexOf(cv); if(i>=0)canvases.splice(i,1); cv.remove(); } var sg=host.querySelector(':scope > .raw-sig'); if(sg) sg.remove(); }
 
     var list=document.getElementById('source-list');
@@ -822,5 +821,177 @@
   });
 })();
 </script>
+<script>
+/* LIVE-SHOW SIMPLIFY: left rail -> MARKUS (transcript); program layout via
+   Spotlight / Duo / Triple buttons driving the tested preset engine. */
+(function(){
+  function ready(fn){document.readyState!=='loading'?fn():document.addEventListener('DOMContentLoaded',fn);}
+  ready(function(){
+    // 1) Rebrand left rail heading to MARKUS (keeps the transcript engine below).
+    try{
+      var sp=document.querySelector('.scenes-panel');
+      if(sp){ sp.setAttribute('data-role','markus');
+        var h=sp.querySelector('.panel-heading h2'); if(h) h.textContent='MARKUS'; }
+    }catch(e){}
+
+    // 2) Inject Spotlight / Duo / Triple switcher into the program toolbar.
+    var actions=document.querySelector('.program-toolbar__actions');
+    if(actions && !actions.querySelector('.raw-modes')){
+      var wrap=document.createElement('div'); wrap.className='raw-modes';
+      [['spotlight','Spotlight','solo'],['duo','Duo','duo'],['triple','Triple','triple']]
+      .forEach(function(d){
+        var b=document.createElement('button'); b.type='button'; b.className='raw-mode';
+        b.dataset.mode=d[0]; b.dataset.preset=d[2]; b.textContent=d[1]; b.setAttribute('aria-pressed', d[0]==='spotlight'?'true':'false');
+        b.addEventListener('click',function(){ setMode(d[0],d[2]); });
+        wrap.appendChild(b);
+      });
+      actions.insertBefore(wrap, actions.firstChild);
+    }
+
+    function activeScene(st){ return (st.scenes||[]).find(function(s){return s.id===st.activeSceneId;})||st.scenes[0]; }
+
+    function edgeRects(mode,count){
+      if(count<=1) return [{x:0,y:0,w:100,h:100}];
+      if(mode==='duo'||count===2) return [{x:0,y:0,w:50,h:100},{x:50,y:0,w:50,h:100}];
+      var t=100/3; return [{x:0,y:0,w:t,h:100},{x:t,y:0,w:t,h:100},{x:2*t,y:0,w:t,h:100}];
+    }
+    function setMode(mode, preset){
+      var app=window.studioApp; if(!app||!app.applyPreset) return;
+      var st=app.state;
+      var sc=activeScene(st); if(sc){ sc.auto=false; sc.layout=[]; }   // rebuild from live crew
+      app.applyPreset('grid');                          // populate items from crew
+      sc=activeScene(st);
+      var n={spotlight:1,duo:2,triple:3}[mode]||1;
+      var items=(sc.layout||[]).slice(0,n);
+      var R=edgeRects(mode, items.length);
+      sc.layout=items.map(function(it,i){return Object.assign({},it,{x:R[i].x,y:R[i].y,w:R[i].w,h:R[i].h,z:i+1,cover:true});});
+      if(app.activateScene) app.activateScene(sc.id);
+      var btns=document.querySelectorAll('.raw-mode');
+      for(var i=0;i<btns.length;i++){ btns[i].setAttribute('aria-pressed', btns[i].dataset.mode===mode?'true':'false'); }
+    }
+    window.rawSetMode=setMode;
+
+    // Default the program to Spotlight on load, once the app is ready.
+    var __t=0;
+    (function initDefault(){
+      if(window.studioApp && window.studioApp.applyPreset){ setMode('spotlight','solo'); return; }
+      if(__t++<40) setTimeout(initDefault,150);
+    })();
+  });
+})();
+</script>
+<script>
+/* When a preset is chosen from the More popover, drop the Spotlight/Duo/Triple highlight. */
+(function(){
+  function ready(fn){document.readyState!=='loading'?fn():document.addEventListener('DOMContentLoaded',fn);}
+  ready(function(){
+    var strip=document.querySelector('.layout-strip');
+    if(!strip) return;
+    strip.addEventListener('click', function(e){
+      if(!e.target.closest('.layout-preset')) return;
+      try{ var app=window.studioApp; if(app&&app.state){ var st=app.state;
+        var sc=(st.scenes||[]).find(function(s){return s.id===st.activeSceneId;})||st.scenes[0];
+        if(sc){ sc.auto=false; sc.layout=[]; } } }catch(_){}
+      document.querySelectorAll('.raw-mode').forEach(function(b){ b.setAttribute('aria-pressed','false'); });
+    }, true);
+  });
+})();
+</script>
+<script>
+/* Seed the three standing host seats (RJ, Greg, Rafa) once, so the crew rail
+   always opens with our seats. Guests are still added via the + button.
+   Seeds a single time (flag) so removing/renaming a seat later is respected. */
+(function(){
+  var KEY='raw.seats.seeded.v1';
+  function ready(fn){document.readyState!=='loading'?fn():document.addEventListener('DOMContentLoaded',fn);}
+  ready(function(){
+    var tries=0;
+    (function go(){
+      var app=window.studioApp;
+      if(app && app.state && Array.isArray(app.state.placeholders)){
+        try{
+          if(!localStorage.getItem(KEY)){
+            var st=app.state, seats=['RJ','Greg','Rafa'], have={};
+            (st.placeholders||[]).forEach(function(p){ if(p&&p.label) have[String(p.label).toLowerCase()]=1; });
+            if(st.sources) st.sources.forEach(function(s){ if(s&&s.label) have[String(s.label).toLowerCase()]=1; });
+            function nextSlot(){ var m=0;
+              (st.placeholders||[]).forEach(function(p){ if((p.slot||0)>m)m=p.slot; });
+              if(st.sources) st.sources.forEach(function(s){ if((s.slot||0)>m)m=s.slot; });
+              return m+1; }
+            var added=0;
+            seats.forEach(function(nm){
+              if(have[nm.toLowerCase()]) return;
+              st.placeholders.push({ streamID:'seat_'+nm.toLowerCase()+'_'+Date.now()+'_'+Math.floor(Math.random()*1e6),
+                label:nm, slot:nextSlot(), placeholder:true, host:true });
+              added++;
+            });
+            localStorage.setItem(KEY,'1');
+            if(added){
+              var sc=(st.scenes||[]).find(function(s){return s.id===st.activeSceneId;})||st.scenes[0];
+              if(sc){ sc.auto=false; sc.layout=[]; }
+              if(window.rawSetMode) window.rawSetMode('spotlight'); else if(app.applyPreset) app.applyPreset('solo');
+            }
+          }
+        }catch(e){}
+        return;
+      }
+      if(tries++<40) setTimeout(go,150);
+    })();
+  });
+})();
+</script>
+<script>
+/* Crew rail: pin RJ/Greg/Rafa (host seats) to the top, guests below with a
+   divider, and give guest seats a clean remove (x). App has no seat-delete. */
+(function(){
+  function ready(fn){document.readyState!=='loading'?fn():document.addEventListener('DOMContentLoaded',fn);}
+  ready(function(){
+    var list=document.getElementById('source-list'); if(!list) return;
+    var HOSTS=['rj','greg','rafa'];
+    function hostSeat(id){ return /^seat_/.test(id||''); }
+    function seatKey(id){ var m=/^seat_([a-z0-9]+)_/i.exec(id||''); return m?m[1].toLowerCase():''; }
+    function phById(id){ var st=window.studioApp&&window.studioApp.state; return st?((st.placeholders||[]).find(function(p){return p.streamID===id;})||null):null; }
+    function removeSeat(id){ var app=window.studioApp; if(!app||!app.state)return;
+      app.state.placeholders=(app.state.placeholders||[]).filter(function(p){return p.streamID!==id;});
+      if(app.activateScene&&app.state.activeSceneId) app.activateScene(app.state.activeSceneId); }
+    var busy=false;
+    function decorate(){
+      if(busy) return; busy=true;
+      try{
+        var cards=Array.prototype.slice.call(list.querySelectorAll('.source-card'));
+        cards.forEach(function(c){
+          var id=c.dataset.sourceId||'';
+          if(hostSeat(id)){ c.setAttribute('data-host-seat','true'); return; }
+          if(phById(id) && !c.querySelector('.raw-seat-del')){
+            var x=document.createElement('button'); x.type='button'; x.className='raw-seat-del';
+            x.title='Remove seat'; x.setAttribute('aria-label','Remove seat'); x.textContent='×';
+            x.addEventListener('click',function(e){ e.stopPropagation(); e.preventDefault(); removeSeat(id); });
+            c.appendChild(x);
+          }
+        });
+        var seatCards=cards.filter(function(c){ return hostSeat(c.dataset.sourceId); })
+          .sort(function(a,b){ return HOSTS.indexOf(seatKey(a.dataset.sourceId)) - HOSTS.indexOf(seatKey(b.dataset.sourceId)); });
+        var need=false;
+        for(var i=0;i<seatCards.length;i++){ if(list.children[i]!==seatCards[i]){ need=true; break; } }
+        if(need){ seatCards.forEach(function(card,i){ var ref=list.children[i]; if(ref!==card) list.insertBefore(card, ref||null); }); }
+        var firstGuest=null;
+        for(var j=0;j<list.children.length;j++){ var ch=list.children[j];
+          if(ch.classList&&ch.classList.contains('raw-seat-divider')) continue;
+          if(!hostSeat(ch.dataset&&ch.dataset.sourceId)){ firstGuest=ch; break; } }
+        var divider=list.querySelector('.raw-seat-divider');
+        if(firstGuest && seatCards.length){
+          if(!divider){ divider=document.createElement('div'); divider.className='raw-seat-divider'; divider.textContent='GUESTS'; }
+          if(divider.nextSibling!==firstGuest){ list.insertBefore(divider, firstGuest); }
+        } else if(divider){ divider.remove(); }
+      }catch(e){}
+      busy=false;
+    }
+    new MutationObserver(function(){ if(!busy) decorate(); }).observe(list,{childList:true});
+    decorate();
+  });
+})();
+</script>
+<script src="./desk.js" defer></script>
+<script src="./broadcast.js" defer></script>
 </body>
 </html>

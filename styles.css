@@ -2127,3 +2127,229 @@ body[data-transcript="on"] .raw-tr-live{display:inline-block}
   text-transform:uppercase;backdrop-filter:blur(3px);pointer-events:none;white-space:nowrap}
 .raw-sig .d{width:6px;height:6px;border-radius:50%;background:var(--bronze,#C6763B);box-shadow:0 0 8px rgba(198,118,59,.7);animation:rawpulse 1.8s ease-in-out infinite}
 
+
+/* ============================================================
+   STATIC v4 — match the original #static-canvas ("NO SIGNAL")
+   Dense dark-grey snow at full opacity over near-black, with a
+   plain letterspaced label. Overrides the muted v3 above.
+   ============================================================ */
+.source-card__preview:not(:has(img)),
+#studio-root .layout-box[data-nofeed="true"]{
+  background:#0a0908!important;
+  box-shadow:inset 0 0 70px 6px rgba(0,0,0,.5)!important;
+}
+.raw-static-cv{opacity:1!important;image-rendering:pixelated}
+.raw-sig{
+  background:none!important;border:0!important;backdrop-filter:none!important;
+  padding:0!important;border-radius:0!important;
+  color:rgba(228,222,210,.5)!important;letter-spacing:.42em!important;
+  font-size:11px!important;text-shadow:0 1px 4px rgba(0,0,0,.9)!important;
+}
+.raw-sig .d{display:none!important}
+
+/* ============================================================
+   LIVE-SHOW SIMPLIFY — retire scene engine; left rail = MARKUS
+   (transcript); program switches via Spotlight/Duo/Triple.
+   Hide (never remove) so app.js keeps its element refs.
+   ============================================================ */
+/* left rail: drop scene management, keep transcript */
+.scenes-panel #import-template,
+.scenes-panel #export-template,
+.scenes-panel #add-scene,
+.scenes-panel #scene-list{display:none!important}
+.scenes-panel[data-role="markus"] .panel-heading:first-child{margin-bottom:6px}
+.scenes-panel[data-role="markus"] .panel-heading:first-child h2{
+  letter-spacing:.28em;color:var(--bronze,#C6763B)}
+
+/* program toolbar: hide scene-management controls + injected Layouts btn */
+#move-scene-up,#move-scene-down,#duplicate-scene,#delete-scene,#go-live,
+.scene-name-label,#active-scene-title,.raw-layouts-btn{display:none!important}
+
+/* Spotlight / Duo / Triple segmented switcher */
+.raw-modes{display:inline-flex;gap:6px;align-items:center}
+.raw-mode{
+  appearance:none;cursor:pointer;font-family:var(--mono,ui-monospace,monospace);
+  font-size:12px;letter-spacing:.08em;text-transform:uppercase;
+  padding:9px 16px;border-radius:8px;
+  color:rgba(236,231,221,.78);background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.09);transition:all .12s ease}
+.raw-mode:hover{color:#ECE7DD;background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.16)}
+.raw-mode[aria-pressed="true"]{
+  color:#1a120b;background:var(--bronze,#C6763B);border-color:var(--bronze,#C6763B);
+  font-weight:600;box-shadow:0 2px 12px rgba(198,118,59,.35)}
+
+/* ============================================================
+   LOCK PROGRAM BOXES — layout is preset-driven only. No manual
+   drag / resize / select; remove the orange bounding box.
+   (Preserves the no-feed static background.)
+   ============================================================ */
+#studio-root .stage-overlay .layout-box{
+  pointer-events:none!important;cursor:default!important;
+  border-color:rgba(255,255,255,.10)!important}
+#studio-root .stage-overlay .layout-box__handle{display:none!important}
+#studio-root .stage-overlay .layout-box[data-selected="true"],
+#studio-root .stage-overlay .layout-box[data-drop-target="true"]{
+  background:transparent!important;box-shadow:none!important;
+  border-color:rgba(255,255,255,.10)!important}
+#studio-root .stage-overlay .layout-box[data-nofeed="true"]{background:#0a0908!important}
+
+/* ============================================================
+   MARKUS rail fix — stop the transcript controls clipping and
+   keep content pinned to the top (Scenes list is hidden).
+   ============================================================ */
+.scenes-panel[data-role="markus"]{grid-template-rows:auto auto 1fr!important}
+/* stack the transcript heading: title on top, controls full-width below */
+.scenes-panel[data-role="markus"] .transcript-section .panel-heading{
+  flex-direction:column;align-items:stretch;gap:8px}
+.scenes-panel[data-role="markus"] .transcript-section .panel-heading__actions{
+  width:100%;display:flex;gap:6px}
+.scenes-panel[data-role="markus"] .transcript-section .panel-heading__actions .raw-select{flex:0 0 auto}
+.scenes-panel[data-role="markus"] .transcript-section .panel-heading__actions #transcript-toggle{flex:1 1 auto;min-width:0;text-align:center}
+/* let the log + placeholder wrap instead of clipping */
+.scenes-panel[data-role="markus"] .transcript-log{margin:0 14px 14px}
+.transcript-empty{overflow-wrap:anywhere}
+
+/* ============================================================
+   "MORE" LAYOUTS — bring back the preset popover trigger as a
+   secondary button after Spotlight / Duo / Triple.
+   ============================================================ */
+.program-toolbar__actions{display:flex;align-items:center;gap:8px}
+.raw-modes{order:1}
+#studio-root .raw-layouts-btn{display:inline-flex!important;align-items:center;order:2;
+  font-size:12px;letter-spacing:.06em}
+
+/* ============================================================
+   CREW RAIL — pinned host seats, guest divider, seat delete;
+   hide the Design tab (design is hard-coded).
+   ============================================================ */
+.tab-button[data-tab="design"],.tab-panel[data-panel="design"]{display:none!important}
+.source-card[data-host-seat="true"]{box-shadow:inset 3px 0 0 var(--bronze,#C6763B)}
+.raw-seat-del{position:absolute;top:6px;right:6px;z-index:6;width:20px;height:20px;padding:0;line-height:1;
+  border-radius:50%;border:1px solid rgba(255,255,255,.16);background:rgba(18,16,14,.72);
+  color:rgba(236,231,221,.75);font-size:14px;cursor:pointer;display:grid;place-items:center;backdrop-filter:blur(2px)}
+.raw-seat-del:hover{background:#D6412B;border-color:#D6412B;color:#fff}
+.raw-seat-divider{padding:10px 14px 4px;font-family:var(--mono,ui-monospace,monospace);font-size:9px;
+  letter-spacing:.28em;text-transform:uppercase;color:rgba(228,222,210,.42)}
+
+/* ============================================================
+   CONTROL DESK — channel-strip audio mixer below the stage.
+   ============================================================ */
+#box-inspector{display:none!important}
+.raw-desk{margin:16px 0 4px;border:1px solid var(--line,rgba(255,255,255,.08));border-radius:12px;
+  background:var(--panel,#141312);overflow:hidden}
+.raw-desk__head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+  padding:10px 14px;border-bottom:1px solid var(--line,rgba(255,255,255,.06))}
+.raw-desk__title{font-family:var(--mono,ui-monospace,monospace);font-size:11px;letter-spacing:.24em;color:var(--bronze,#C6763B)}
+.raw-desk__hint{font-family:var(--mono,ui-monospace,monospace);font-size:10px;letter-spacing:.06em;color:rgba(236,231,221,.4)}
+.raw-desk__rack{display:flex;gap:10px;padding:14px;overflow-x:auto}
+.raw-strip{flex:0 0 82px;display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 8px;
+  border-radius:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06)}
+.raw-strip--master{background:rgba(198,118,59,.09);border-color:rgba(198,118,59,.28)}
+.raw-strip[data-offline="true"]{opacity:.45}
+.raw-strip--focus{border-color:var(--bronze,#C6763B);box-shadow:0 0 0 1px var(--bronze,#C6763B)}
+.raw-strip__name{font-family:var(--mono,ui-monospace,monospace);font-size:11px;color:#ECE7DD;
+  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.raw-strip__body{display:flex;align-items:stretch;gap:8px;height:132px}
+.raw-fader{-webkit-appearance:slider-vertical;appearance:slider-vertical;width:22px;height:132px;accent-color:var(--bronze,#C6763B);cursor:pointer}
+.raw-vu{width:8px;height:132px;border-radius:3px;background:rgba(0,0,0,.5);overflow:hidden;display:flex;align-items:flex-end}
+.raw-vu__fill{display:block;width:100%;height:0%;background:linear-gradient(#6f9c5a,#C6763B 68%,#E0483B);transition:height .1s linear}
+.raw-strip__btns{display:flex;gap:6px}
+.raw-mbtn,.raw-sbtn{font-family:var(--mono,ui-monospace,monospace);font-size:11px;width:26px;height:24px;border-radius:6px;
+  cursor:pointer;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:rgba(236,231,221,.8)}
+.raw-mbtn.on{background:#E0483B;border-color:#E0483B;color:#fff}
+.raw-sbtn.on{background:#C6763B;border-color:#C6763B;color:#1a120b}
+.raw-mbtn:disabled,.raw-sbtn:disabled,.raw-fader:disabled{opacity:.4;cursor:not-allowed}
+.raw-strip__state{font-family:var(--mono,ui-monospace,monospace);font-size:9px;letter-spacing:.14em;
+  text-transform:uppercase;color:rgba(236,231,221,.5)}
+
+/* Retire the Samples test-feed button (no longer used). */
+#add-samples{display:none!important}
+
+/* ============================================================
+   CONTROL DESK v2 — hardware / console look (StudioLive-ish).
+   Overrides the v1 desk styling above. CSS only.
+   ============================================================ */
+.raw-desk{background:linear-gradient(180deg,#1b1917,#111010);border:1px solid #000;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05), 0 10px 30px rgba(0,0,0,.45)}
+.raw-desk__head{background:linear-gradient(180deg,#262320,#1a1817);border-bottom:1px solid #000;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+.raw-desk__title{color:#E9C9A8}
+.raw-desk__rack{gap:6px;padding:12px 12px 14px;
+  background:linear-gradient(180deg,#161412,#0f0e0d)}
+
+/* channel strip: recessed metal panel */
+.raw-strip{flex:0 0 78px;gap:7px;padding:8px 7px 9px;border-radius:6px;border:1px solid #000;
+  background:linear-gradient(180deg,#211f1d,#171513);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05), inset 0 0 0 1px rgba(255,255,255,.015), 0 2px 4px rgba(0,0,0,.4)}
+.raw-strip--master{background:linear-gradient(180deg,#2a211a,#1a1512);border-color:#000;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06), 0 0 0 1px rgba(198,118,59,.25), 0 2px 6px rgba(0,0,0,.5)}
+.raw-strip--focus{box-shadow:0 0 0 2px var(--bronze,#C6763B), inset 0 1px 0 rgba(255,255,255,.06)!important}
+
+/* scribble-strip name plate */
+.raw-strip__name{width:100%;text-align:center;padding:4px 4px;border-radius:3px;font-size:10px;letter-spacing:.08em;
+  background:linear-gradient(180deg,#2c2926,#201e1c);border:1px solid #000;color:#ECE7DD;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06), inset 0 -1px 2px rgba(0,0,0,.4)}
+.raw-strip--master .raw-strip__name{background:linear-gradient(180deg,#7c4a24,#5c371b);color:#fff;letter-spacing:.14em}
+
+/* fader + meter live in a recessed groove */
+.raw-strip__body{gap:8px;height:150px;padding:6px 5px;border-radius:4px;
+  background:#0b0a09;box-shadow:inset 0 2px 7px rgba(0,0,0,.8), inset 0 0 0 1px rgba(255,255,255,.03)}
+.raw-fader{width:24px;height:100%;accent-color:var(--bronze,#C6763B)}
+
+/* segmented LED meter with dB-style scale ticks */
+.raw-vu{position:relative;width:13px;height:100%;border-radius:2px;background:#050504;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.07), inset 0 0 6px rgba(0,0,0,.9)}
+.raw-vu__fill{position:absolute;left:0;bottom:0;width:100%;height:0%;
+  background:linear-gradient(to top,#37a94e 0%,#7cc247 42%,#e2c74a 68%,#e0793a 86%,#E0483B 100%);
+  transition:height .09s linear}
+.raw-vu::after{content:"";position:absolute;inset:0;pointer-events:none;border-radius:2px;
+  background:repeating-linear-gradient(to top, rgba(0,0,0,.9) 0 1px, transparent 1px 4px)}
+.raw-vu::before{content:"";position:absolute;top:0;left:-6px;width:4px;height:100%;pointer-events:none;
+  background:repeating-linear-gradient(to top, rgba(255,255,255,.18) 0 1px, transparent 1px 14.6px)}
+
+/* tactile M / S buttons */
+.raw-mbtn,.raw-sbtn{width:28px;height:22px;border-radius:4px;font-size:10px;font-weight:600;
+  border:1px solid #000;background:linear-gradient(180deg,#2a2724,#1c1a18);color:rgba(236,231,221,.7);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}
+.raw-mbtn.on{background:linear-gradient(180deg,#ff5a49,#c9382b);border-color:#7a1f16;color:#fff;
+  box-shadow:0 0 8px rgba(224,72,59,.5), inset 0 1px 0 rgba(255,255,255,.3)}
+.raw-sbtn.on{background:linear-gradient(180deg,#f0c24a,#c6902f);border-color:#7a561a;color:#241a09;
+  box-shadow:0 0 8px rgba(214,150,60,.45), inset 0 1px 0 rgba(255,255,255,.4)}
+
+.raw-strip__state{font-size:8px;letter-spacing:.16em;color:rgba(236,231,221,.42)}
+
+/* ============================================================
+   BROADCAST — logo bug, standby overlay, Logo/Standby buttons.
+   ============================================================ */
+.raw-bcast{display:inline-flex;gap:6px;align-items:center;order:3}
+.raw-bcast-btn{appearance:none;cursor:pointer;font-family:var(--mono,ui-monospace,monospace);font-size:12px;
+  letter-spacing:.06em;text-transform:uppercase;padding:9px 14px;border-radius:8px;
+  color:rgba(236,231,221,.78);background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);transition:all .12s ease}
+.raw-bcast-btn:hover{color:#ECE7DD;background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.16)}
+.raw-bcast-btn[aria-pressed="true"]{color:#1a120b;background:var(--bronze,#C6763B);border-color:var(--bronze,#C6763B);font-weight:600}
+.raw-bcast--warn:hover{border-color:#E0483B;color:#fff}
+.raw-bcast--warn[aria-pressed="true"]{background:#E0483B;border-color:#E0483B;color:#fff;box-shadow:0 0 12px rgba(224,72,59,.45)}
+
+/* logo bug (broadcast corner ident) */
+.raw-logo-bug{position:absolute;right:16px;bottom:14px;z-index:8;pointer-events:none;display:flex;align-items:center;gap:9px;
+  padding:7px 13px;border-radius:9px;background:rgba(10,9,8,.42);backdrop-filter:blur(5px);
+  box-shadow:0 6px 20px rgba(0,0,0,.45)}
+.raw-logo-bug .rlb-dot{width:9px;height:9px;border-radius:50%;background:#D6412B;box-shadow:0 0 10px rgba(224,72,59,.85);animation:rlbpulse 1.8s ease-in-out infinite}
+.raw-logo-bug .rlb-word{position:relative;font-family:var(--mono,ui-monospace,monospace);font-size:21px;font-weight:800;letter-spacing:.03em;color:#ECE7DD;line-height:1}
+.raw-logo-bug .rlb-a{color:var(--bronze,#C6763B)}
+.raw-logo-bug .rlb-word::after{content:"";position:absolute;left:0;right:0;bottom:-5px;height:2px;border-radius:2px;
+  background:linear-gradient(90deg,var(--bronze,#C6763B),#E0483B);transform:scaleX(0);transform-origin:left}
+.raw-logo-bug.rlb-anim{animation:rlbin .5s ease both}
+.raw-logo-bug.rlb-anim .rlb-word::after{animation:rlbdraw .7s .22s ease both}
+@keyframes rlbpulse{50%{opacity:.4}}
+@keyframes rlbin{from{opacity:0;transform:translateY(7px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes rlbdraw{to{transform:scaleX(1)}}
+
+/* standby overlay (covers the program stage) */
+.raw-standby-overlay{position:absolute;inset:0;z-index:22;background:#000;border-radius:inherit;overflow:hidden}
+.raw-standby-frame{width:100%;height:100%;border:0;display:block}
+.raw-standby-overlay.on{animation:sbfade .18s ease both}
+@keyframes sbfade{from{opacity:0}to{opacity:1}}
+
+/* Feeds edge-to-edge: thin hairline between touching layout boxes. */
+#studio-root .stage-overlay .layout-box{border:1px solid rgba(255,255,255,.14)!important}
