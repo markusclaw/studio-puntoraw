@@ -20,6 +20,7 @@
       +'<div class="ji-foot">Crew hold the desk. Guests join and wait to be brought on.</div>'
       +'</div>';
     document.body.appendChild(ov);
+    var chosen=false;
 
     var tiles=ov.querySelector('.ji-tiles'), guestBox=ov.querySelector('.ji-guest');
     SEATS.forEach(function(s){
@@ -54,14 +55,15 @@
       if(n) n.value=name; if(c) c.value=code||'';
       if(typeof f.requestSubmit==='function') f.requestSubmit();
       else f.dispatchEvent(new Event('submit',{cancelable:true,bubbles:true}));
-      ov.hidden=true;
+      chosen=true; ov.hidden=true;
+      setTimeout(function(){ var g=document.querySelector('.raw-join-overlay'); if(g&&g.dataset.show==='true'){ chosen=false; ov.hidden=false; } }, 4000);
     }
 
     // Mirror the host identity gate: show Jump In while not joined, hide once joined.
     (function attach(){
       var g=document.querySelector('.raw-join-overlay');
       if(!g){ setTimeout(attach,150); return; }
-      function apply(){ var show=g.dataset.show==='true'; ov.hidden=!show; if(!show) guestBox.hidden=true; }
+      function apply(){ if(chosen){ ov.hidden=true; return; } var show=g.dataset.show==='true'; ov.hidden=!show; if(!show) guestBox.hidden=true; }
       apply();
       new MutationObserver(apply).observe(g,{attributes:true,attributeFilter:['data-show']});
     })();

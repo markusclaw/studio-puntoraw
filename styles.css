@@ -2386,3 +2386,10 @@ body[data-transcript="on"] .raw-tr-live{display:inline-block}
 .raw-jumpin .ji-guest-go{background:var(--bronze,#C6763B);border:0;border-radius:8px;color:#1a120b;font-family:inherit;
   font-size:12px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;padding:0 16px;cursor:pointer}
 .raw-jumpin .ji-foot{margin-top:16px;font-size:10px;letter-spacing:.06em;color:rgba(236,231,221,.4);text-align:center}
+
+/* Jump In avatars: larger, rounded-square (show more of the photo). */
+.raw-jumpin .ji-tiles{gap:14px}
+.raw-jumpin .ji-tile{padding:10px 10px 12px;gap:9px}
+.raw-jumpin .ji-av{width:100%;height:auto;aspect-ratio:1/1;border-radius:12px;
+  border:1px solid rgba(255,255,255,.12);box-shadow:0 6px 16px rgba(0,0,0,.45)}
+.raw-jumpin .ji-tile--guest .ji-av{filter:grayscale(.45) opacity(.9)}

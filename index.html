@@ -367,6 +367,7 @@
 			}
 			function draw() {
 				const w = c.width, h = c.height;
+				if (!w || !h) { raf = requestAnimationFrame(draw); return; }
 				const img = ctx.createImageData(w, h);
 				const d = img.data;
 				for (let i = 0; i < d.length; i += 4) {
