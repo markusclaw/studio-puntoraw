@@ -995,5 +995,35 @@
 <script src="./desk.js" defer></script>
 <script src="./broadcast.js" defer></script>
 <script src="./jumpin.js" defer></script>
+<script>
+/* Auto-cleanup: prune dead/ghost sources so stale peers can't squat slots or
+   steal the Spotlight. A source that never brings video within the grace window
+   (dead peer), or that has been disconnected a while, is dropped. Real feeds
+   (which have a thumbnail) are always kept. Enhancement over app.js. */
+(function(){
+  function ready(fn){document.readyState!=='loading'?fn():document.addEventListener('DOMContentLoaded',fn);}
+  ready(function(){
+    var meta={};
+    function app(){ return window.studioApp; }
+    function sweep(){
+      var a=app(); if(!a||!a.state||!a.state.sources) return;
+      var st=a.state, now=Date.now(), kill=[];
+      st.sources.forEach(function(s,id){
+        if(!s || s.placeholder) return;
+        var m=meta[id]||(meta[id]={first:now,ever:false,disc:0});
+        if(s.thumbnailUrl) m.ever=true;                       // has (or had) real video
+        if(s.disconnected){ if(!m.disc) m.disc=now; } else { m.disc=0; }
+        if((!m.ever && (now-m.first)>20000) ||                // ghost: no video for 20s
+           (m.disc && (now-m.disc)>12000)) kill.push(id);     // gone for 12s
+      });
+      if(kill.length){
+        kill.forEach(function(id){ try{ st.sources.delete(id); }catch(e){} delete meta[id]; });
+        try{ if(a.activateScene && st.activeSceneId) a.activateScene(st.activeSceneId); }catch(e){}
+      }
+    }
+    setInterval(sweep,4000); setTimeout(sweep,8000);
+  });
+})();
+</script>
 </body>
 </html>
