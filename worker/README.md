@@ -1,68 +1,63 @@
-# .RAW Sessions — Host Badge Worker
+# .RAW Sessions — Room Coordination Worker (protocol 2)
 
-A Cloudflare Worker + Durable Object that holds the authoritative **HOST badge**
-for each studio room and syncs it to every crew console over WebSockets. This is
-what makes the host model work **across machines** and be **server-enforced**
-(one host at a time, hand-off, and Greg → RJ → RAFA succession).
+A Cloudflare Worker + Durable Object that holds the **authoritative room record**
+for each studio room and syncs it to every console, greenroom and program
+renderer over WebSockets. One Durable Object per room (`/room/<ROOM>`).
 
-## What it does
+## What the room owns
 
-- One Durable Object per room (`/room/<ROOM>`), keyed by the studio room name.
-- Presence = live WebSocket connections (no heartbeats).
-- The server owns the badge: assigns by rank, honors hand-off, and auto-passes
-  down the ranked order when the host disconnects.
-- SQLite-backed DO with WebSocket Hibernation — cheap, and runs on the Workers
-  **Free plan**.
+- **Three reserved host seats** — `rj`, `greg`, `rafa` (see `src/model.js` `HOSTS`).
+  Seats are claimed exclusively; a reconnect window (`PRESENCE_MS`) lets the same
+  identity retake its seat, and a second device is refused with an `occupied` error.
+- **Guests** — a roster with an `admitted` flag. A guest only publishes media once
+  admitted; deny/leave clears it.
+- **Program** — versioned snapshot: scenes/layout, brand, mix + master, standby,
+  logo, and a session-timer flag. Every change bumps `revision`.
+- **Controller lease** — a badge with a term and a 20s lease (`LEASE_MS`). Every
+  state-changing command is gated **fail-closed**: only a crew member who is
+  ready, holds the current badge, matches the term and has an unexpired lease may
+  change program/mix/admission/standby or pass control. `rj` is preferred only
+  when no controller exists; an arriving host never steals control mid-show.
 
-## Deploy (one time)
+Presence is heartbeat + `lastSeen` based (no label/thumbnail guessing). Auth
+happens in the first WebSocket message, so no codes appear in URLs or access logs.
+
+## Configure
+
+- **Roster:** `src/model.js` → `HOSTS` (server authority). The client display
+  lives in `../jumpin.js` and `../host.js`; keep them in sync.
+- **Crew code (required):** the Worker fail-closes — if `CREW_CODE` is unset,
+  **no one can take a host seat**. Set it as a secret (below). Use a strong value,
+  not a guessable one.
+- **Origin allow-list:** `src/index.js` accepts `https://studio.puntoraw.org` and
+  localhost; other browser origins are rejected. (Empty-Origin, e.g. non-browser
+  clients, is allowed and is backstopped by the crew code + admission.)
+
+## Deploy
 
 ```bash
-cd raw-worker
+cd worker
 npm install
-npx wrangler login          # opens your browser; pick the Cloudflare account
+npx wrangler login                 # opens a browser; pick the Cloudflare account
+npx wrangler secret put CREW_CODE   # enter a strong host code (NOT "123")
 npx wrangler deploy
 ```
 
-`wrangler deploy` prints your Worker URL, e.g.
-`https://raw-studio-host.<your-subdomain>.workers.dev`.
+`wrangler deploy` prints the Worker URL, e.g.
+`https://raw-studio-host.<subdomain>.workers.dev`. The client points at it in
+`../room-client.js` (`RAW_WORKER_URL`) and `../host.js` (`CONFIG.workerUrl`) with
+the `wss://` scheme. Health check: `GET /health` → `{"ok":true,"protocol":2}`.
 
-## Wire it into the studio
+> The client refuses a protocol mismatch, so deploy the Worker **and** the static
+> site together — a half-deploy takes the studio down.
 
-In `../host.js`, set `CONFIG.workerUrl` to that origin **with the `wss://` scheme**:
-
-```js
-const CONFIG = {
-  workerUrl: "wss://raw-studio-host.<your-subdomain>.workers.dev",
-  workerKey: ""   // leave empty unless you set AUTH_KEY below
-};
-```
-
-Reload the studio. The HOST badge now syncs across every machine that opens the
-console. Leaving `workerUrl` empty falls back to same-machine (BroadcastChannel)
-mode — handy for local testing.
-
-## Optional: lock it with a shared key
+## Test
 
 ```bash
-npx wrangler secret put AUTH_KEY      # enter a random string
+npm test        # pure logic checks for model.js (no network, no deps)
 ```
-
-Then set the same value as `CONFIG.workerKey` in `host.js`. Consoles without the
-key get rejected (401).
 
 ## Change the crew / order
 
-The roster lives in **two** places and must match:
-
-- `src/index.js` → `ROSTER` (server authority)
-- `../host.js`   → `ROSTER` (client display)
-
-Edit both, then `npx wrangler deploy` again.
-
-## Notes
-
-- Free-plan limits apply (plenty for a small crew). See Cloudflare's Durable
-  Objects pricing page.
-- `npm run tail` streams live logs while debugging.
-- The room name comes from the studio (`window.studioApp.state.room`), so each
-  `.RAW` room automatically gets its own isolated badge.
+Edit `src/model.js` `HOSTS` (server) and the matching display in `../jumpin.js`
+and `../host.js`, then `npx wrangler deploy` again.

@@ -1,5 +1,5 @@
 /* JUMP IN — avatar chooser that fronts the identity gate. Picking a crew seat
-   fills name + crew code ("123") and submits the existing join form; Guest
+   routes to the greenroom where the host enters their private code; Guest
    enters with no code (host.js routes guests to the greenroom preflight).
    Enhancement over app.js/host.js (drives their form, no core edits). */
 (function(){
