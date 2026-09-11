@@ -105,7 +105,7 @@ function getActiveScene() {
 
 function scheduleSave() {
 	clearTimeout(state.saveTimer);
-	state.saveTimer = setTimeout(saveSession, 200);
+	state.saveTimer = setTimeout(() => { saveSession(); publishProgram(); }, 200);
 }
 
 function sessionStorageKey() {
@@ -132,29 +132,36 @@ function saveSession() {
 }
 
 function loadSession() {
-	clearPendingSceneDelete(false);
-	state.scenes = clone(defaultScenes);
-	state.activeSceneId = "scene_1";
-	state.placeholders = [];
-	try {
-		const saved = JSON.parse(localStorage.getItem(sessionStorageKey()) || "null");
-		if (saved && saved.version === APP_STATE_VERSION && Array.isArray(saved.scenes) && saved.scenes.length) {
-			state.scenes = saved.scenes;
-			state.activeSceneId = saved.activeSceneId || state.scenes[0].id;
-			state.lastAppliedSceneId = saved.lastAppliedSceneId || null;
-			state.placeholders = Array.isArray(saved.placeholders) ? saved.placeholders : [];
-			state.brand = { ...state.brand, ...(saved.brand || {}) };
-		}
-	} catch (error) {
-		console.warn("Unable to load studio session", error);
-	}
-	if (!getActiveScene()) {
-		state.activeSceneId = state.scenes[0].id;
-	}
-	if (state.lastAppliedSceneId && !state.scenes.some(scene => scene.id === state.lastAppliedSceneId)) {
-		state.lastAppliedSceneId = null;
-	}
+ clearPendingSceneDelete(false);
+ state.scenes=[{id:'main',name:'Main',auto:false,layout:['RJ','Greg','Rafa'].map((label,i)=>({id:'box_'+i,slot:i,streamID:'',label,x:i*100/3,y:0,w:100/3,h:100,z:i+1,cover:true}))}];
+ state.activeSceneId='main';state.placeholders=[];
 }
+
+let roomSnapshot=null, remoteRender=false, programPending=false;
+function programDraft(){return {scenes:state.scenes,activeSceneId:state.activeSceneId,brand:state.brand};}
+function publishProgram(){
+ if(remoteRender || !window.rawCanControl?.() || !roomSnapshot)return;
+ const draft=JSON.parse(JSON.stringify(programDraft()));
+ if(JSON.stringify(draft)===JSON.stringify({scenes:roomSnapshot.program.scenes,activeSceneId:roomSnapshot.program.activeSceneId,brand:roomSnapshot.program.brand}))return;
+ programPending=true;
+ window.RawHost.send({type:'program',revision:roomSnapshot.program.revision,program:draft});
+}
+function receiveRoom(snapshot){
+ const old=roomSnapshot;
+ roomSnapshot=snapshot;
+ if(old && old.program.revision===snapshot.program.revision && JSON.stringify(old.members.map(m=>[m.id,m.slot,m.streamID,m.admitted,m.ready]))===JSON.stringify(snapshot.members.map(m=>[m.id,m.slot,m.streamID,m.admitted,m.ready])))return;
+ remoteRender=true;programPending=false;
+ clearTimeout(state.saveTimer);
+ const p=snapshot.program;
+ state.scenes=clone(p.scenes);state.activeSceneId=p.activeSceneId;state.brand=clone(p.brand);
+ state.lastAppliedSceneId=p.activeSceneId;
+ state.placeholders=[{seat:'rj',name:'RJ',slot:1},{seat:'greg',name:'Greg',slot:2},{seat:'rafa',name:'Rafa',slot:3},...snapshot.members.filter(m=>m.role==='guest'&&m.admitted)].map(m=>({streamID:m.seat?'seat_'+m.seat:'guest_'+m.id,label:m.name,slot:m.slot,host:!!m.seat,placeholder:true}));
+ for(const [id,src] of state.sources){const m=snapshot.members.find(m=>m.streamID===id&&(m.role==='crew'||m.admitted));if(!m){if(src.thumbnailUrl)URL.revokeObjectURL(src.thumbnailUrl);state.sources.delete(id);}else{src.label=m.name;src.slot=m.slot;}}
+ renderAll();remoteRender=false;
+ window.dispatchEvent(new CustomEvent('raw-program-rendered',{detail:snapshot}));
+}
+window.addEventListener('raw-room-state',e=>receiveRoom(e.detail));
+window.addEventListener('raw-room-error',e=>{programPending=false;if(roomSnapshot)receiveRoom(roomSnapshot);showToast(e.detail.message);});
 
 function normalizeTemplateScene(scene, index) {
 	const name =
@@ -208,6 +215,7 @@ function exportTemplate() {
 }
 
 function importTemplateFile(file) {
+ if(!window.rawCanControl?.())return;
 	if (!file) {
 		return;
 	}
@@ -310,7 +318,7 @@ function buildDirectorUrl() {
 	url.searchParams.set("chatbutton", "0");
 	url.searchParams.set("director", state.room);
 	url.searchParams.set("slotmode", "");
-	url.searchParams.set("showdirector", "");
+	url.searchParams.set("noaudio", "");
 	if (state.password) {
 		url.searchParams.set("password", state.password);
 	}
@@ -331,37 +339,16 @@ async function buildInviteUrl() {
 }
 
 function buildSceneUrl(options = {}) {
-	const url = new URL("https://vdo.ninja/index.html");
-	url.searchParams.set("scene", "0");
-	url.searchParams.set("layout", "");
-	url.searchParams.set("remote", "");
-	url.searchParams.set("showlabels", "");
-	url.searchParams.set("room", state.room);
-	url.searchParams.set("locked", "1.7777777777");
-	if (options.record) {
-		url.searchParams.set("recordwindow", "");
-		url.searchParams.set("chroma", "000");
-	}
-	if (options.whipEndpoint) {
-		url.searchParams.set("cleanviewer", "");
-		url.searchParams.set("chroma", "000");
-		url.searchParams.set("nosettings", "");
-		url.searchParams.set("prefercurrenttab", "");
-		url.searchParams.set("selfbrowsersurface", "include");
-		url.searchParams.set("displaysurface", "browser");
-		url.searchParams.set("np", "");
-		url.searchParams.set("nopush", "");
-		url.searchParams.set("publish", "");
-		url.searchParams.set("quality", "1");
-		url.searchParams.set("whippush", options.whipEndpoint);
-	}
-	if (state.password) {
-		url.searchParams.set("password", state.password);
-	}
-	return url.href;
+ const url=new URL('program.html',location.href);url.searchParams.set('room',state.room);
+ if(state.password)url.searchParams.set('password',state.password);
+ if(options.record)url.searchParams.set('record','1');
+ return url.href;
 }
 
 function framePost(message) {
+ const readOnly=message.getDetailedState || message.getLoudness || message.getVideoFrame || message.function==='getGuestMediaDevices';
+ if(!readOnly && !window.rawCanControl?.())return;
+
 	if (!directorFrame.contentWindow) {
 		return;
 	}
@@ -445,12 +432,14 @@ function applyDetailedState(detailedState) {
 		if (item.director === true && !item.streamID.endsWith(":s")) {
 			return;
 		}
-		const previous = state.sources.get(item.streamID);
+		const member=roomSnapshot?.members.find(m=>m.streamID===item.streamID && (m.role==='crew'||m.admitted));
+        if(!member)return;
+        const previous = state.sources.get(item.streamID);
 		const others = item.others || {};
 		const source = {
 			streamID: item.streamID,
-			label: item.label || item.streamID,
-			slot: item.slot ? parseInt(item.slot, 10) : false,
+			label: member.name,
+			slot: member.slot,
 			group: item.group || [],
 			muted: Boolean(item.muted || others["mute-guest"]),
 			videoMuted: Boolean(item.videoMuted || others["mute-video-guest"]),
@@ -641,18 +630,7 @@ function isSourceOnStage(source) {
 }
 
 function buildSourceList() {
-	const liveSources = Array.from(state.sources.values()).sort((a, b) => {
-		if (Boolean(a.disconnected) !== Boolean(b.disconnected)) {
-			return a.disconnected ? 1 : -1;
-		}
-		const slotA = a.slot || 9999;
-		const slotB = b.slot || 9999;
-		if (slotA !== slotB) {
-			return slotA - slotB;
-		}
-		return a.streamID.localeCompare(b.streamID);
-	});
-	return liveSources.concat(state.placeholders);
+ return state.placeholders.map(ph=>Array.from(state.sources.values()).find(s=>s.slot===ph.slot&&!s.disconnected&&!s.queued)||ph).sort((a,b)=>a.slot-b.slot);
 }
 
 function normalizeGuestDevices(devices) {
@@ -836,7 +814,7 @@ function renderSources() {
 
 		const meta = document.createElement("div");
 		meta.className = "source-card__meta";
-		meta.textContent = isPlaceholder ? (source.sample ? "Sample test asset" : "Reserved guest slot") : `${source.streamID}${source.disconnected ? " / disconnected" : source.videoMuted ? " / video muted" : ""}`;
+		meta.textContent = isPlaceholder ? (source.sample ? "Sample test asset" : "Reserved guest slot") : `${source.slot<=3 ? "Host" : "Guest"}${source.disconnected ? " / reconnecting" : source.videoMuted ? " / camera off" : " / connected"}`;
 
 		const sourceState = document.createElement("div");
 		sourceState.className = "source-card__state";
@@ -1124,6 +1102,7 @@ function finishLayoutEdit() {
 }
 
 function updateSelectedBox(values) {
+ if(!window.rawCanControl?.())return;
 	const item = getSelectedLayoutItem();
 	if (!item) {
 		return;
@@ -1144,6 +1123,7 @@ function updateSelectedBox(values) {
 }
 
 function removeSelectedBox() {
+ if(!window.rawCanControl?.())return;
 	const scene = getActiveScene();
 	const item = getSelectedLayoutItem();
 	if (!scene || !item) {
@@ -1220,6 +1200,7 @@ function renameActiveScene() {
 }
 
 function renameActiveSceneLive() {
+ if(!window.rawCanControl?.())return;
 	const scene = getActiveScene();
 	if (!scene) {
 		return;
@@ -1234,6 +1215,7 @@ function renameActiveSceneLive() {
 }
 
 function activateScene(sceneId) {
+ if(!window.rawCanControl?.())return;
 	if (!state.scenes.some(scene => scene.id === sceneId)) {
 		return;
 	}
@@ -1248,6 +1230,7 @@ function activateScene(sceneId) {
 }
 
 function duplicateActiveScene() {
+ if(!window.rawCanControl?.())return;
 	const scene = getActiveScene();
 	if (!scene) {
 		return;
@@ -1290,6 +1273,7 @@ function clearPendingSceneDelete(sync = true) {
 }
 
 function deleteActiveScene() {
+ if(!window.rawCanControl?.())return;
 	const scene = getActiveScene();
 	if (!scene || state.scenes.length <= 1) {
 		showToast("Keep at least one scene");
@@ -1313,6 +1297,7 @@ function deleteActiveScene() {
 }
 
 function moveActiveScene(direction) {
+ if(!window.rawCanControl?.())return;
 	const scene = getActiveScene();
 	const index = scene ? state.scenes.findIndex(item => item.id === scene.id) : -1;
 	const nextIndex = index + direction;
@@ -1369,7 +1354,7 @@ function sourceMatchesLayoutItem(source, item) {
 function layoutItemFromSource(source, index) {
 	return {
 		id: createId("box"),
-		streamID: source.placeholder ? "" : source.streamID,
+		streamID: "",
 		slot: source.slot ? source.slot - 1 : index,
 		label: source.label,
 		cover: true,
@@ -1379,7 +1364,7 @@ function layoutItemFromSource(source, index) {
 
 function sourceIdentityForLayout(source, index) {
 	return {
-		streamID: source.placeholder ? "" : source.streamID,
+		streamID: "",
 		slot: source.slot ? source.slot - 1 : index,
 		label: source.label || ""
 	};
@@ -1404,6 +1389,7 @@ function nextZ(scene) {
 }
 
 function addSourceToStage(sourceId, position = null) {
+ if(!window.rawCanControl?.())return;
 	const source = getSourceById(sourceId);
 	if (!source) {
 		return;
@@ -1424,7 +1410,7 @@ function addSourceToStage(sourceId, position = null) {
 	};
 	scene.layout.push({
 		id: createId("box"),
-		streamID: source.placeholder ? "" : source.streamID,
+		streamID: "",
 		slot: source.slot ? source.slot - 1 : count,
 		label: source.label,
 		x: defaultRect.x,
@@ -1441,6 +1427,7 @@ function addSourceToStage(sourceId, position = null) {
 }
 
 function removeSourceFromStage(sourceId) {
+ if(!window.rawCanControl?.())return;
 	const scene = getActiveScene();
 	const source = getSourceById(sourceId);
 	if (!scene || scene.auto || !source) {
@@ -1456,6 +1443,7 @@ function removeSourceFromStage(sourceId) {
 }
 
 function assignSourceToLayoutItem(sourceId, targetBoxId) {
+ if(!window.rawCanControl?.())return;
 	const source = getSourceById(sourceId);
 	const scene = getActiveScene();
 	if (!source || !scene || scene.auto) {
@@ -1497,7 +1485,7 @@ function soloSource(sourceId) {
 	scene.layout = [
 		{
 			id: createId("box"),
-			streamID: source.placeholder ? "" : source.streamID,
+			streamID: "",
 			slot: source.slot ? source.slot - 1 : 0,
 			label: source.label,
 			x: 2,
@@ -1514,6 +1502,7 @@ function soloSource(sourceId) {
 }
 
 function spotlightSource(sourceId) {
+ if(!window.rawCanControl?.())return;
 	const source = getSourceById(sourceId);
 	if (!source || source.disconnected || source.queued) {
 		return;
@@ -1544,6 +1533,7 @@ function spotlightSource(sourceId) {
 }
 
 function toggleSourceControl(streamID, control) {
+ if(!window.rawCanControl?.())return;
 	const source = state.sources.get(streamID);
 	if (!source) {
 		return;
@@ -1607,6 +1597,7 @@ async function loadSourceDevices(streamID, options = {}) {
 }
 
 async function changeSourceDevice(streamID, kind, deviceId) {
+ if(!window.rawCanControl?.())return;
 	const source = state.sources.get(streamID);
 	if (!source || source.placeholder || source.disconnected || !deviceId) {
 		return;
@@ -1628,6 +1619,7 @@ async function changeSourceDevice(streamID, kind, deviceId) {
 }
 
 function activateQueuedGuest(streamID) {
+ if(!window.rawCanControl?.())return;
 	const source = state.sources.get(streamID);
 	if (!source || !source.queued) {
 		return;
@@ -1675,6 +1667,7 @@ function prioritizePresetItems(items, name) {
 }
 
 function applyPreset(name) {
+ if(!window.rawCanControl?.())return;
 	const scene = ensureEditableScene();
 	const limit = getPresetLimit(name);
 	const items = prioritizePresetItems(currentLayoutItemsForPreset(limit), name);
@@ -1853,16 +1846,9 @@ function buildLayoutPayload(scene) {
 }
 
 function applySceneToFrame() {
-	const scene = getActiveScene();
-	if (!state.iframeReady || !scene) {
-		return;
-	}
-	const layout = buildLayoutPayload(scene);
-	framePost({ scene: "0", layout });
-	state.lastAppliedSceneId = scene.id;
-	renderScenes();
-	setStatus(scene.auto ? "Auto layout" : "Updated", "live");
-	scheduleSave();
+ // The room snapshot drives the shared renderer; no director broadcasts from preview tabs.
+ if(!window.rawCanControl?.())return;
+ scheduleSave();
 }
 
 function round(value) {
@@ -1870,6 +1856,7 @@ function round(value) {
 }
 
 function beginBoxDrag(event, boxId, mode) {
+ if(!window.rawCanControl?.())return;
 	event.preventDefault();
 	event.stopPropagation();
 	const scene = getActiveScene();
@@ -1898,6 +1885,7 @@ function beginBoxDrag(event, boxId, mode) {
 }
 
 function handleBoxDrag(event) {
+ if(!window.rawCanControl?.())return;
 	const drag = state.dragOperation;
 	if (!drag) {
 		return;
@@ -1926,6 +1914,7 @@ function handleBoxDrag(event) {
 }
 
 function endBoxDrag() {
+ if(!window.rawCanControl?.())return;
 	window.removeEventListener("pointermove", handleBoxDrag);
 	delete stageOverlay.dataset.dragging;
 	state.dragOperation = null;
@@ -2017,6 +2006,7 @@ function getNextSlot() {
 }
 
 function addSampleSources() {
+ if(!window.rawCanControl?.())return;
 	const existing = new Set(state.placeholders.filter(item => item.sample).map(item => item.label));
 	let nextSlot = getNextSlot();
 	let added = 0;
@@ -2084,6 +2074,8 @@ async function startStudio() {
 	setStatus("Loading", "idle");
 	const url = buildDirectorUrl();
 	directorFrame.src = url;
+ const programURL=new URL(buildSceneUrl());programURL.searchParams.set('monitor','1');
+ document.getElementById('program-frame').src=programURL.href;
 	const current = new URL(window.location.href);
 	current.searchParams.set("room", state.room);
 	if (state.password) {
@@ -2110,7 +2102,7 @@ function bindEvents() {
 	directorFrame.addEventListener("load", () => {
 		state.iframeReady = true;
 		setStatus("Connected", "live");
-		framePost({ previewMode: true, layout: buildLayoutPayload(getActiveScene()), target: "*" });
+		framePost({ mute: true });
 		applySceneToFrame();
 		refreshState();
 		framePost({ getLoudness: true });
@@ -2244,25 +2236,10 @@ function bindEvents() {
 	});
 	document.getElementById("copy-scene").addEventListener("click", () => copyText(document.getElementById("scene-link").value, "Scene link"));
 	document.getElementById("open-scene").addEventListener("click", () => openUrl(buildSceneUrl(), "Scene link opened"));
-	document.getElementById("record-scene").addEventListener("click", () => openUrl(buildSceneUrl({ record: true }), "Recorder opened"));
+	document.getElementById("record-scene").addEventListener("click", () => openUrl(buildSceneUrl({ record: true }), "Program opened — record in OBS"));
 	document.getElementById("open-meshcast").addEventListener("click", () => openUrl("https://app.meshcast.io/", "Meshcast opened"));
-	document.getElementById("publish-whip").addEventListener("click", () => {
-		const endpoint = document.getElementById("whip-endpoint").value.trim();
-		if (!endpoint) {
-			showToast("Enter a WHIP endpoint");
-			return;
-		}
-		try {
-			const url = new URL(endpoint);
-			if (!["http:", "https:"].includes(url.protocol)) {
-				throw new Error("Unsupported WHIP endpoint protocol");
-			}
-		} catch (error) {
-			showToast("Enter a valid WHIP endpoint");
-			return;
-		}
-		openUrl(buildSceneUrl({ whipEndpoint: endpoint }), "WHIP publisher opened");
-	});
+ document.getElementById('publish-whip').addEventListener('click',()=>showToast('Use OBS to stream the shared program feed.'));
+
 }
 
 bindEvents();

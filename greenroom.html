@@ -113,6 +113,7 @@ body{
   <div class="foot">.RAW Sessions &middot; you'll go live when the host brings you on</div>
 </div>
 
+<script src="room-client.js"></script>
 <script>
 "use strict";
 const WORKER_URL = "wss://raw-studio-host.rovelo-ga.workers.dev";
@@ -127,17 +128,9 @@ const PASS = params.get("password") || params.get("pass") || params.get("pw") ||
 // where their camera activates their FIXED seat box (seat_<key>_cam).
 const CREW = params.get("crew") === "1";
 const SEAT = (params.get("seat") || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-const CLIENT_ID_KEY = "raw.host.clientId";
-
 function id(x){ return document.getElementById(x); }
-function esc(s){ return String(s||"").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
-function clientId(){
-  try{ let v=localStorage.getItem(CLIENT_ID_KEY);
-    if(!v){ v=(crypto&&crypto.randomUUID)?crypto.randomUUID():("c"+Date.now()+Math.floor(Math.random()*1e9)); localStorage.setItem(CLIENT_ID_KEY,v);} return v;
-  }catch(e){ return "c"+Date.now()+Math.floor(Math.random()*1e9); }
-}
-const CID = clientId();
-
+function esc(s){const e=document.createElement('span');e.textContent=String(s||'');return e.innerHTML;}
+const session=window.rawSession(ROOM);
 const els = {
   who:id("who"), cam:id("cam"), preview:id("preview"), camPh:id("camPh"),
   preflight:id("preflight"), micBar:id("micBar"), micHint:id("micHint"),
@@ -147,6 +140,16 @@ const els = {
 
 let NAME = (params.get("name")||"").trim().slice(0,60);
 if (NAME) els.nameInput.value = NAME;
+if(CREW){
+  const names={rj:'RJ',greg:'Greg',rafa:'Rafa'};
+  if(!names[SEAT]) location.replace('index.html?room='+encodeURIComponent(ROOM));
+  NAME=names[SEAT]||'';els.nameInput.value=NAME;els.nameInput.readOnly=true;
+  const field=document.createElement('div');field.className='field';
+  field.innerHTML='<label for="hostCode">Private host code</label><input id="hostCode" type="password" autocomplete="current-password" placeholder="Host access code">';
+  els.enterBtn.before(field);
+  els.enterBtn.textContent='Reserve '+NAME+' seat and enter studio →';
+  id('pfHint').textContent='Test your camera and microphone. Your seat is checked before you enter; another device cannot occupy it at the same time.';
+}
 
 /* ---------- Preflight: local preview, device pickers, mic meter ---------- */
 let previewStream=null, audioCtx=null, rafId=null;
@@ -234,97 +237,53 @@ function stopMeter(){
 els.camSel.addEventListener("change", switchDevices);
 els.micSel.addEventListener("change", switchDevices);
 
-/* ---------- Stage 2: publish + connect to Worker, wait for admit ---------- */
-let socket=null, connected=false, admitted=false, reconnectDelay=1000, rt=null;
-
-function startCamera(){
-  let q = "room="+encodeURIComponent(ROOM)+"&webcam&label="+encodeURIComponent(NAME)+"&cleanoutput&autostart";
-  if(PASS) q += "&password="+encodeURIComponent(PASS);   // match the console's room, else video is dropped
-  // Best-effort: ask VDO for the devices chosen in preflight (matched by label; falls back to default).
-  const camLabel = els.camSel.selectedOptions[0] ? els.camSel.selectedOptions[0].textContent : "";
-  const micLabel = els.micSel.selectedOptions[0] ? els.micSel.selectedOptions[0].textContent : "";
-  if(camLabel && camLabel!=="Default") q += "&videodevice="+encodeURIComponent(camLabel);
-  if(micLabel && micLabel!=="Default") q += "&audiodevice="+encodeURIComponent(micLabel);
-  const f=document.createElement("iframe");
-  f.allow="camera; microphone; autoplay; fullscreen; display-capture";
-  f.src=VDO_BASE+"/?"+q;
-  els.cam.appendChild(f);
-  els.preview.classList.add("hidden");
-  els.camPh.classList.add("hidden");
+/* Only admitted guests publish; host claims carry across the greenroom handoff. */
+let client=null, publisher=null, confirmed=false;
+function stopPublisher(){if(publisher){publisher.remove();publisher=null;}}
+function startCamera(member){
+  if(publisher)return;
+  if(previewStream){previewStream.getTracks().forEach(t=>t.stop());previewStream=null;}stopMeter();
+  const q=new URLSearchParams({room:ROOM,webcam:'',push:member.streamID,label:NAME,cleanoutput:'',autostart:''});
+  if(PASS)q.set('password',PASS);
+  const cam=els.camSel.selectedOptions[0]?.textContent,mic=els.micSel.selectedOptions[0]?.textContent;
+  if(cam&&cam!=='Default')q.set('videodevice',cam);if(mic&&mic!=='Default')q.set('audiodevice',mic);
+  publisher=document.createElement('iframe');publisher.allow='camera; microphone; autoplay; fullscreen';publisher.title='Your camera and conversation';publisher.src=VDO_BASE+'/?'+q;
+  els.cam.appendChild(publisher);els.preview.classList.add('hidden');els.camPh.classList.add('hidden');
 }
-
-function renderStatus(){
-  if(!connected){
-    els.status.dataset.state="offline"; els.pip.className="pip off";
-    els.statusT.textContent="Reconnecting…"; els.statusS.textContent="Lost the studio connection";
-    return;
-  }
-  if(admitted){
-    els.status.dataset.state="admitted"; els.pip.className="pip live";
-    els.statusT.textContent="You're in";
-    els.statusS.textContent="The host will bring you on air shortly. Sit tight.";
-  } else {
-    els.status.dataset.state="waiting"; els.pip.className="pip wait";
-    els.statusT.textContent="Waiting to be let in";
-    els.statusS.textContent="The host has been notified you're here.";
-  }
-}
-function connect(){
-  const q=new URLSearchParams({ id:CID, name:NAME, code:"" });
-  try{ socket=new WebSocket(WORKER_URL.replace(/\/+$/,"")+"/room/"+encodeURIComponent(ROOM)+"?"+q); }
-  catch(e){ scheduleReconnect(); return; }
-  socket.addEventListener("open",()=>{ connected=true; reconnectDelay=1000; renderStatus(); });
-  socket.addEventListener("message",ev=>{
-    let m; try{ m=JSON.parse(ev.data); }catch(e){ return; }
-    if(m.type==="state"){
-      const me=(m.members||[]).find(x=>x.id===CID);
-      admitted = me ? !!me.admitted : false;
-      renderStatus();
-    }
-  });
-  socket.addEventListener("close",()=>{ connected=false; renderStatus(); scheduleReconnect(); });
-  socket.addEventListener("error",()=>{ try{ socket.close(); }catch(e){} });
-}
-function scheduleReconnect(){ clearTimeout(rt); rt=setTimeout(connect, reconnectDelay); reconnectDelay=Math.min(reconnectDelay*2,10000); }
-
 function enter(){
-  const v=els.nameInput.value.trim().slice(0,60);
-  if(!v){ els.nameInput.focus(); return; }
-  NAME=v;
-
-  // CREW: this is A/V confirmation only. Save the seat + chosen devices, release
-  // the camera, and hand off to the console — where the camera re-publishes once
-  // under the fixed id seat_<seat>_cam and activates that host's box.
-  if(CREW){
-    const camLabel = els.camSel.selectedOptions[0] ? els.camSel.selectedOptions[0].textContent : "";
-    const micLabel = els.micSel.selectedOptions[0] ? els.micSel.selectedOptions[0].textContent : "";
-    const seat = SEAT || v.toLowerCase().replace(/[^a-z0-9]/g,"");
-    try{
-      localStorage.setItem("raw.host.identity", JSON.stringify({ name:v, code:"123" }));
-      localStorage.setItem("raw.host.seat", seat);
-      localStorage.setItem("raw.host.cam", camLabel && camLabel!=="Default" ? camLabel : "");
-      localStorage.setItem("raw.host.mic", micLabel && micLabel!=="Default" ? micLabel : "");
-      localStorage.setItem("raw.host.enter", "1");    // one-shot: auto-join the console
-      localStorage.setItem("raw.host.autopub", "1");  // and auto-publish my camera
-    }catch(e){}
-    stopMeter();
-    if(previewStream){ previewStream.getTracks().forEach(t=>t.stop()); previewStream=null; }
-    let url = "index.html?room="+encodeURIComponent(ROOM);
-    if(PASS) url += "&password="+encodeURIComponent(PASS);
-    location.href = url;
-    return;
-  }
-
-  els.who.innerHTML="You&nbsp;<b>"+esc(NAME)+"</b>";
-  stopMeter();
-  if(previewStream){ previewStream.getTracks().forEach(t=>t.stop()); previewStream=null; }
-  els.preflight.classList.add("hidden");
-  els.stage.classList.remove("hidden");
-  startCamera();
-  connect();
+  if(confirmed)return;
+  NAME=els.nameInput.value.trim().slice(0,60);if(!NAME){els.nameInput.focus();return;}
+  const code=CREW?id('hostCode').value:'';
+  if(CREW&&!code){id('hostCode').focus();return;}
+  confirmed=true;els.enterBtn.disabled=true;id('pfHint').textContent=CREW?'Checking your seat…':'Connecting to the host…';
+  client=new RawRoomClient(ROOM,{...session,name:NAME,seat:CREW?SEAT:'',code,ready:false});
+  client.addEventListener('joined',e=>{
+    if(CREW){
+      sessionStorage.setItem('raw.host.identity',JSON.stringify({name:NAME,code}));
+      sessionStorage.setItem('raw.host.seat',SEAT);
+      sessionStorage.setItem('raw.host.cam',els.camSel.selectedOptions[0]?.textContent||'');
+      sessionStorage.setItem('raw.host.mic',els.micSel.selectedOptions[0]?.textContent||'');
+      sessionStorage.setItem('raw.host.enter','1');sessionStorage.setItem('raw.host.autopub','1');
+      stopMeter();previewStream?.getTracks().forEach(t=>t.stop());
+      // Keep the reservation until the authenticated console replaces this socket.
+      const q=new URLSearchParams({room:ROOM});if(PASS)q.set('password',PASS);
+      location.replace('index.html?'+q);return;
+    }
+    els.preflight.classList.add('hidden');els.stage.classList.remove('hidden');
+  });
+  client.addEventListener('state',e=>{
+    if(CREW)return;
+    const me=e.detail.members.find(m=>m.id===session.id);
+    if(me?.admitted){startCamera(me);els.statusT.textContent="You're in the studio";els.statusS.textContent='You can talk with the hosts. The controller selects when you appear in the program.';els.pip.className='pip live';}
+    else {stopPublisher();els.statusT.textContent='Waiting for admission';els.statusS.textContent='Your camera and microphone are not being sent to the studio.';els.pip.className='pip wait';}
+  });
+  client.addEventListener('offline',()=>{stopPublisher();els.statusT.textContent='Reconnecting…';els.statusS.textContent='Publishing paused until your admission is confirmed.';});
+  client.addEventListener('fatal',e=>{stopPublisher();confirmed=false;els.enterBtn.disabled=false;els.preflight.classList.remove('hidden');id('pfHint').textContent=e.detail;});
+  client.connect();
 }
-els.enterBtn.addEventListener("click", enter);
-els.nameInput.addEventListener("keydown", e=>{ if(e.key==="Enter") enter(); });
+els.enterBtn.addEventListener('click',enter);
+els.nameInput.addEventListener('keydown',e=>{if(e.key==='Enter')enter();});
+window.addEventListener('pagehide',()=>{stopPublisher();client?.close(false);});
 
 // F8: stop the preview camera + mic meter if the guest leaves before entering
 // (enter() already tears these down on the normal path).

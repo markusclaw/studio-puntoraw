@@ -130,7 +130,8 @@
 
 					<section class="stage-shell">
 						<div class="stage-aspect" id="stage" data-testid="stage-drop-target">
-							<iframe id="director-frame" title="VDO.Ninja program preview" allow="autoplay; camera; microphone; fullscreen; picture-in-picture; display-capture; screen-wake-lock; accelerometer; midi; geolocation; clipboard-write"></iframe>
+							<iframe id="program-frame" title="Shared program" allow="autoplay" style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>
+						<iframe id="director-frame" title="VDO.Ninja program preview" allow="autoplay; camera; microphone; fullscreen; picture-in-picture; display-capture; screen-wake-lock; accelerometer; midi; geolocation; clipboard-write"></iframe>
 							<div id="stage-bg" class="stage-bg"></div>
 							<div id="stage-overlay" class="stage-overlay" aria-label="Layout editor surface"></div>
 							<div class="stage-empty" id="stage-empty">
@@ -286,14 +287,14 @@
 							</div>
 						</label>
 						<label class="field-row field-row--stacked">
-							<span>WHIP endpoint</span>
-							<input id="whip-endpoint" autocomplete="off" placeholder="https://example.com/whip/..." />
+							<span hidden>WHIP endpoint</span>
+							<input hidden id="whip-endpoint" autocomplete="off" placeholder="https://example.com/whip/..." />
 						</label>
 						<div class="output-actions">
 							<button type="button" class="button button--secondary" id="open-scene">Open Scene Link</button>
-							<button type="button" class="button button--secondary" id="record-scene">Open Recorder</button>
-							<button type="button" class="button button--secondary" id="open-meshcast">Open Meshcast</button>
-							<button type="button" class="button button--primary" id="publish-whip">Open WHIP Publisher</button>
+							<button type="button" class="button button--secondary" hidden id="record-scene">Open Recorder</button>
+							<button type="button" class="button button--secondary" hidden id="open-meshcast">Open Meshcast</button>
+							<button type="button" class="button button--primary" hidden id="publish-whip">Open WHIP Publisher</button>
 						</div>
 					</section>
 
@@ -303,21 +304,21 @@
 							<h2>OBS Setup</h2>
 						</div>
 						<div class="obs-guide">
-							<p class="obs-guide__intro">Add these as <strong>Browser Sources</strong> in OBS (1920×1080). The studio composes the feeds — OBS captures and streams to YouTube.</p>
+							<p class="obs-guide__intro">Add this as one <strong>Browser Source</strong> in OBS (1920×1080). The studio composes the feeds — OBS captures and streams to YouTube.</p>
 
 							<div class="obs-link-card">
 								<div class="obs-link-card__label">
 									<i class="las la-user"></i>
-									Active Speaker (Solo)
+									Shared program
 								</div>
-								<div class="obs-link-card__desc">Auto-switches to whoever is talking. 2s settle delay.</div>
+								<div class="obs-link-card__desc">The same layout, levels, logo and standby shown in Studio.</div>
 								<div class="copy-row">
 									<input id="obs-active-solo" readonly class="obs-url" />
 									<button type="button" class="icon-button obs-copy" data-target="obs-active-solo" title="Copy"><i class="las la-copy"></i></button>
 								</div>
 							</div>
 
-							<div class="obs-link-card">
+							<div class="obs-link-card" hidden>
 								<div class="obs-link-card__label">
 									<i class="las la-th-large"></i>
 									Grid View
@@ -329,7 +330,7 @@
 								</div>
 							</div>
 
-							<div class="obs-link-card">
+							<div class="obs-link-card" hidden>
 								<div class="obs-link-card__label">
 									<i class="las la-star"></i>
 									Spotlight
@@ -344,7 +345,7 @@
 
 						<div class="stream-note">
 							<i class="las la-info-circle"></i>
-							<span>Mute audio on these Browser Sources in OBS. Keep your per-person audio channels for levels control.</span>
+							<span>Enable audio on the shared program Browser Source. Mute duplicate per-person sources to avoid doubled audio. Start recording and streaming in OBS.</span>
 						</div>
 					</section>
 				</aside>
@@ -510,17 +511,9 @@
 				const room = (window.studioApp && window.studioApp.state && window.studioApp.state.room) || ((roomEl && (roomEl.textContent || roomEl.innerText) || '').replace(/^Room:\s*/, '').trim());
 				if (!room) return;
 
-				const base = 'https://vdo.ninja/?scene=0&room=' + encodeURIComponent(room);
-				const pwVal = (window.studioApp && window.studioApp.state && window.studioApp.state.password) || '';
-				const pwStr = pwVal ? '&password=' + encodeURIComponent(pwVal) : '';
-
-				const solo = document.getElementById('obs-active-solo');
-				const grid = document.getElementById('obs-grid');
-				const highlight = document.getElementById('obs-highlight');
-
-				if (solo) solo.value = base + '&activespeaker=1&activespeakerdelay=2000&cleanoutput&noaudio' + pwStr;
-				if (grid) grid.value = base + '&cleanoutput&noaudio' + pwStr;
-				if (highlight) highlight.value = base + '&activehighlight=2&cleanoutput&noaudio' + pwStr;
+				const url=new URL('program.html',location.href);url.searchParams.set('room',room);
+                const pwVal=window.studioApp?.state.password||'';if(pwVal)url.searchParams.set('password',pwVal);
+                ['obs-active-solo','obs-grid','obs-highlight'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=url.href;});
 			}
 
 			// Watch for room name changes
@@ -549,6 +542,7 @@
 		})();
 		</script>
 
+		<script src="./room-client.js"></script>
 		<script type="module" src="./app.js"></script>
 		<!-- Convention-level host badge (single host, hand-off, Greg->RJ->RAFA succession) -->
 		<script src="./host.js" defer></script>
@@ -615,36 +609,7 @@
 })();
 </script>
 
-<script>
-/* Phase 1 - Session & Mode: Build/Live, on-air timer, transcript wiring, episode record. Enhancement over app.js. */
-(function(){
-  function ready(fn){document.readyState!=='loading'?fn():document.addEventListener('DOMContentLoaded',fn);}
-  ready(function(){
-    var root=document.getElementById('studio-root'); var statusBar=document.querySelector('.topbar__status'); if(!root||!statusBar)return;
-    if(document.querySelector('.raw-session')) return;
-    function S(){return (window.studioApp&&window.studioApp.state)||{};}
-    var wrap=document.createElement('div');wrap.className='raw-session';
-    var onair=document.createElement('div');onair.className='raw-onair';onair.innerHTML='<span class="od"></span><span>On Air</span><span class="ot" id="raw-timer">00:00</span>';
-    var edit=document.createElement('button');edit.type='button';edit.className='raw-modetoggle';edit.hidden=true;edit.setAttribute('aria-label','Toggle build or live editing');
-    var primary=document.createElement('button');primary.type='button';primary.className='raw-primary raw-primary--go';primary.textContent='● Go Live';
-    wrap.appendChild(onair);wrap.appendChild(edit);wrap.appendChild(primary);statusBar.appendChild(wrap);
-    var warn=document.createElement('div');warn.className='raw-editwarn';warn.innerHTML='<span>● Live — editing. Back to Live when done.</span>';document.body.appendChild(warn);
-    var timerInt=null,confirmT=null,editT=null,startedAt=null;
-    function setMode(m){root.dataset.mode=m;document.body.dataset.mode=m;if(window.studioApp&&window.studioApp.state)window.studioApp.state.mode=m;edit.textContent=(m==='live')?'Edit':'Back to Live';if(m==='live'){var c=document.querySelector('.tabs .tab-button[data-tab="sources"]');if(c&&c.getAttribute('aria-selected')!=='true')c.click();}}
-    function transcript(a){var b=document.getElementById('transcript-toggle');if(!b)return;var run=b.textContent.trim()==='Stop';if(a==='start'&&!run)b.click();if(a==='stop'&&run)b.click();}
-    function fmt(ms){var s=Math.floor(ms/1000);var h=Math.floor(s/3600);var m=Math.floor((s%3600)/60);var ss=s%60;return (h>0?h+':':'')+String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0');}
-    function tick(){var t=document.getElementById('raw-timer');if(t&&startedAt)t.textContent=fmt(Date.now()-startedAt);}
-    function goLive(){startedAt=Date.now();if(window.studioApp&&window.studioApp.state)window.studioApp.state.session={live:true,startedAt:startedAt,endedAt:null};document.body.dataset.session='live';setMode('live');edit.hidden=false;primary.className='raw-primary raw-primary--end';primary.textContent='■ End Session';transcript('start');clearInterval(timerInt);timerInt=setInterval(tick,1000);tick();}
-    function endSession(){clearInterval(timerInt);timerInt=null;var s=startedAt||Date.now(),e=Date.now();transcript('stop');saveEpisode(s,e);startedAt=null;if(window.studioApp&&window.studioApp.state)window.studioApp.state.session={live:false,startedAt:null,endedAt:e};document.body.dataset.session='idle';setMode('build');edit.hidden=true;primary.className='raw-primary raw-primary--go';primary.textContent='● Go Live';toast('Session ended · '+fmt(e-s)+' · '+participants().length+' participant(s)');}
-    function participants(){try{var src=S().sources;if(!src||!src.forEach)return[];var o=[];src.forEach(function(x){if(x&&!x.disconnected&&!x.placeholder&&!x.queued)o.push(x.label||x.streamID||'Guest');});return o;}catch(e){return[];}}
-    function saveEpisode(s,e){var rec={room:S().room||'',episode:(document.getElementById('topbar-episode')||{}).textContent||'',startedAt:s,endedAt:e,durationMs:e-s,participants:participants(),transcript:((document.getElementById('transcript-log')||{}).innerText||'').trim()};try{var k='raw.episodes.'+(rec.room||'default');var a=JSON.parse(localStorage.getItem(k)||'[]');a.push(rec);localStorage.setItem(k,JSON.stringify(a).slice(0,500000));}catch(e2){}try{console.log('[.RAW] episode recorded',rec);}catch(e3){}}
-    function toast(m){var t=document.createElement('div');t.textContent=m;t.style.cssText='position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:9999;background:#1c1a18;color:#E6DFD2;border:1px solid rgba(255,255,255,.14);padding:9px 16px;border-radius:8px;font-family:monospace;font-size:12px;box-shadow:0 10px 30px rgba(0,0,0,.5)';document.body.appendChild(t);setTimeout(function(){t.remove();},3600);}
-    primary.addEventListener('click',function(){if(window.rawCanControl&&!window.rawCanControl()){toast('Only the host can go live — take control first');return;}if(document.body.dataset.session!=='live'){goLive();return;}if(primary.dataset.confirm==='1'){clearTimeout(confirmT);primary.dataset.confirm='';primary.classList.remove('raw-primary--confirm');endSession();return;}primary.dataset.confirm='1';primary.classList.add('raw-primary--confirm');primary.textContent='Confirm end?';confirmT=setTimeout(function(){primary.dataset.confirm='';primary.classList.remove('raw-primary--confirm');primary.textContent='■ End Session';},3000);});
-    edit.addEventListener('click',function(){if(root.dataset.mode==='live'){if(edit.dataset.confirm==='1'){clearTimeout(editT);edit.dataset.confirm='';setMode('build');return;}edit.dataset.confirm='1';edit.textContent='Edit live?';editT=setTimeout(function(){edit.dataset.confirm='';edit.textContent='Edit';},3000);}else{setMode('live');}});
-    document.body.dataset.session='idle';setMode('build');
-  });
-})();
-</script>
+
 <script>
 /* Phase 2 - People rows: compact participant rows with quick actions that proxy app.js's own buttons (all wiring reused). */
 (function(){
@@ -806,41 +771,7 @@
   });
 })();
 </script>
-<script>
-/* Natural static engine: one shared rAF loop draws random noise into small canvases overlaid on missing feeds. */
-(function(){
-  function ready(fn){document.readyState!=='loading'?fn():document.addEventListener('DOMContentLoaded',fn);}
-  ready(function(){
-    var canvases=[], last=0;
-    function loop(ts){
-      if(ts-last>33){ last=ts;
-        for(var i=canvases.length-1;i>=0;i--){ var cv=canvases[i];
-          if(!cv.isConnected){ canvases.splice(i,1); continue; }
-          var w=cv.width,h=cv.height,ctx=cv._ctx; if(!ctx) continue;
-          var img=ctx.createImageData(w,h), d=img.data;
-          for(var j=0;j<d.length;j+=4){ var v=(Math.random()*40)|0; d[j]=d[j+1]=d[j+2]=v; d[j+3]=255; }
-          ctx.putImageData(img,0,0);
-        }
-      }
-      requestAnimationFrame(loop);
-    }
-    requestAnimationFrame(loop);
-    function add(host){ if(!host||host.querySelector(':scope > .raw-static-cv'))return; var cv=document.createElement('canvas'); cv.className='raw-static-cv'; var rr=host.getBoundingClientRect(); cv.width=Math.max(64,Math.min(384,Math.round((rr.width||256)/2.5))); cv.height=Math.max(36,Math.min(216,Math.round((rr.height||144)/2.5))); try{cv._ctx=cv.getContext('2d');}catch(e){return;} host.insertBefore(cv, host.firstChild); canvases.push(cv); if(!host.querySelector(':scope > .raw-sig')){ var sg=document.createElement('div'); sg.className='raw-sig'; sg.innerHTML='<span class="d"></span>No signal'; host.appendChild(sg); } }
-    function drop(host){ if(!host)return; var cv=host.querySelector(':scope > .raw-static-cv'); if(cv){ var i=canvases.indexOf(cv); if(i>=0)canvases.splice(i,1); cv.remove(); } var sg=host.querySelector(':scope > .raw-sig'); if(sg) sg.remove(); }
 
-    var list=document.getElementById('source-list');
-    if(list){
-      var scanCrew=function(){ var pv=list.querySelectorAll('.source-card__preview'); for(var i=0;i<pv.length;i++){ pv[i].querySelector('img')?drop(pv[i]):add(pv[i]); } };
-      new MutationObserver(scanCrew).observe(list,{childList:true,subtree:true}); scanCrew();
-    }
-    var overlay=document.getElementById('stage-overlay');
-    if(overlay){
-      var scanStage=function(){ var bx=overlay.querySelectorAll('.layout-box'); for(var i=0;i<bx.length;i++){ bx[i].dataset.nofeed==='true'?add(bx[i]):drop(bx[i]); } };
-      new MutationObserver(scanStage).observe(overlay,{childList:true,attributes:true,attributeFilter:['data-nofeed']}); scanStage();
-    }
-  });
-})();
-</script>
 <script>
 /* LIVE-SHOW SIMPLIFY: left rail -> MARKUS (transcript); program layout via
    Spotlight / Duo / Triple buttons driving the tested preset engine. */
@@ -876,6 +807,7 @@
       var t=100/3; return [{x:0,y:0,w:t,h:100},{x:t,y:0,w:t,h:100},{x:2*t,y:0,w:t,h:100}];
     }
     function setMode(mode, preset){
+      if(!window.rawCanControl())return;
       var app=window.studioApp; if(!app||!app.applyPreset) return;
       var st=app.state;
       var sc=activeScene(st); if(sc){ sc.auto=false; sc.layout=[]; }   // rebuild from live crew
@@ -891,12 +823,6 @@
     }
     window.rawSetMode=setMode;
 
-    // Default the program to Spotlight on load, once the app is ready.
-    var __t=0;
-    (function initDefault(){
-      if(window.studioApp && window.studioApp.applyPreset){ setMode('spotlight','solo'); return; }
-      if(__t++<40) setTimeout(initDefault,150);
-    })();
   });
 })();
 </script>
@@ -917,181 +843,34 @@
   });
 })();
 </script>
-<script>
-/* Seed the three standing host seats (RJ, Greg, Rafa) once, so the crew rail
-   always opens with our seats. Guests are still added via the + button.
-   Seeds a single time (flag) so removing/renaming a seat later is respected. */
-(function(){
-  var KEY='raw.seats.seeded.v2';   // v2: pin explicit stage slots 1/2/3 so host seats always lead
-  function ready(fn){document.readyState!=='loading'?fn():document.addEventListener('DOMContentLoaded',fn);}
-  ready(function(){
-    var tries=0;
-    (function go(){
-      var app=window.studioApp;
-      if(app && app.state && Array.isArray(app.state.placeholders)){
-        try{
-          if(!localStorage.getItem(KEY)){
-            // Reserve the top three stage slots for the standing hosts, in order,
-            // so an early-arriving stray peer can never outrank them for Spotlight.
-            var st=app.state, seats=[{n:'RJ',slot:1},{n:'Greg',slot:2},{n:'Rafa',slot:3}], have={};
-            (st.placeholders||[]).forEach(function(p){ if(p&&p.label) have[String(p.label).toLowerCase()]=1; });
-            if(st.sources) st.sources.forEach(function(s){ if(s&&s.label) have[String(s.label).toLowerCase()]=1; });
-            var added=0;
-            seats.forEach(function(seat){
-              if(have[seat.n.toLowerCase()]) return;
-              st.placeholders.push({ streamID:'seat_'+seat.n.toLowerCase()+'_'+Date.now()+'_'+Math.floor(Math.random()*1e6),
-                label:seat.n, slot:seat.slot, placeholder:true, host:true });
-              added++;
-            });
-            localStorage.setItem(KEY,'1');
-            if(added){
-              var sc=(st.scenes||[]).find(function(s){return s.id===st.activeSceneId;})||st.scenes[0];
-              if(sc){ sc.auto=false; sc.layout=[]; }
-              if(window.rawSetMode) window.rawSetMode('spotlight'); else if(app.applyPreset) app.applyPreset('solo');
-            }
-          }
-        }catch(e){}
-        return;
-      }
-      if(tries++<40) setTimeout(go,150);
-    })();
-  });
-})();
-</script>
-<script>
-/* Crew rail: pin RJ/Greg/Rafa (host seats) to the top. A host's live feed drops
-   into its seat automatically when published through the Cam button (which uses
-   a deterministic seat_<key>_cam id), OR the director assigns ANY feed to a seat
-   with the per-feed "SEAT" button — which works no matter what random id / empty
-   label VDO gives the feed. Guests sit below a divider with a remove (x). */
-(function(){
-  function ready(fn){document.readyState!=='loading'?fn():document.addEventListener('DOMContentLoaded',fn);}
-  // Shared seat-assignment map. The director console is the source of truth for
-  // the program; persisted so it survives re-renders within a session.
-  window.rawSeatmap = window.rawSeatmap || {
-    get:function(){ try{return JSON.parse(localStorage.getItem('raw.seatmap')||'{}');}catch(e){return {};} },
-    set:function(id,key){ var m=this.get(); if(key)m[id]=key; else delete m[id];
-      try{localStorage.setItem('raw.seatmap',JSON.stringify(m));}catch(e){} },
-    keyOf:function(id){ return String((this.get()[id]||'')).toLowerCase(); }
-  };
-  ready(function(){
-    var list=document.getElementById('source-list'); if(!list) return;
-    var HOSTS=['rj','greg','rafa'];
-    var SEATLABEL={rj:'RJ',greg:'Greg',rafa:'Rafa'};
-    var SEATSLOT={rj:1,greg:2,rafa:3};
-    function hostSeat(id){ return /^seat_/.test(id||''); }
-    function seatKey(id){ var m=/^seat_([a-z0-9]+)_/i.exec(id||''); return m?m[1].toLowerCase():''; }
-    function st(){ return window.studioApp&&window.studioApp.state; }
-    function phById(id){ var s=st(); return s?((s.placeholders||[]).find(function(p){return p.streamID===id;})||null):null; }
-    function liveById(id){ var s=st(); return (s&&s.sources&&s.sources.get)?s.sources.get(id):null; }
-    function assignedKey(id){ return window.rawSeatmap.keyOf(id); }
-    function cardKey(c){ var id=(c.dataset&&c.dataset.sourceId)||''; return hostSeat(id)?seatKey(id):assignedKey(id); }
-    function isSeatCard(c){ var id=(c.dataset&&c.dataset.sourceId)||''; return hostSeat(id) || !!assignedKey(id); }
-    function reRender(){ var a=window.studioApp; if(a&&a.activateScene&&a.state&&a.state.activeSceneId) a.activateScene(a.state.activeSceneId); }
-    function removeSeat(id){ var a=window.studioApp; if(!a||!a.state)return;
-      a.state.placeholders=(a.state.placeholders||[]).filter(function(p){return p.streamID!==id;}); reRender(); }
-    function assignTo(id,key){
-      window.rawSeatmap.set(id,key||'');
-      var live=liveById(id); if(live) live.slot = key ? (SEATSLOT[key]||live.slot) : false;
-      reRender();
-    }
-    var busy=false;
-    function decorate(){
-      if(busy) return; busy=true;
-      try{
-        var cards=Array.prototype.slice.call(list.querySelectorAll('.source-card'));
-        // A seat is "occupied" when a LIVE feed (not a placeholder) is its cam id
-        // or is assigned to it → its reserved placeholder is hidden.
-        var occupied={};
-        cards.forEach(function(c){ var id=c.dataset.sourceId||''; if(phById(id))return; var k=cardKey(c); if(k) occupied[k]=true; });
-        cards.forEach(function(c){
-          var id=c.dataset.sourceId||'', mk=assignedKey(id);
-          if(hostSeat(id)){
-            c.setAttribute('data-host-seat','true');
-            c.style.display = (phById(id) && occupied[seatKey(id)]) ? 'none' : '';
-            return;
-          }
-          // guest feed — an assigned one becomes that host's seat
-          if(mk){ c.setAttribute('data-host-seat','true');
-            var nm=c.querySelector('.source-card__name'); if(nm && SEATLABEL[mk]) nm.textContent=SEATLABEL[mk];
-          } else { c.removeAttribute('data-host-seat'); }
-          c.style.display='';
-          // "SEAT" assign button on any live guest feed (cycles none→RJ→Greg→Rafa)
-          if(liveById(id)){
-            var b=c.querySelector('.raw-seat-assign');
-            if(!b){ b=document.createElement('button'); b.type='button'; b.className='raw-seat-assign';
-              b.title='Assign this feed to a host seat';
-              b.addEventListener('click',function(e){ e.stopPropagation(); e.preventDefault();
-                var order=['','rj','greg','rafa'], cur=assignedKey(id), ni=(order.indexOf(cur)+1)%order.length;
-                assignTo(id, order[ni]); });
-              c.appendChild(b);
-            }
-            b.textContent = mk ? SEATLABEL[mk] : 'SEAT';
-            b.setAttribute('data-on', mk ? 'true' : 'false');
-          }
-          // remove (x) only for reserved guest placeholders (not mapped feeds)
-          if(phById(id) && !mk && !c.querySelector('.raw-seat-del')){
-            var x=document.createElement('button'); x.type='button'; x.className='raw-seat-del';
-            x.title='Remove seat'; x.setAttribute('aria-label','Remove seat'); x.textContent='×';
-            x.addEventListener('click',function(e){ e.stopPropagation(); e.preventDefault(); removeSeat(id); });
-            c.appendChild(x);
-          }
-        });
-        var seatCards=cards.filter(function(c){ return isSeatCard(c) && c.style.display!=='none'; })
-          .sort(function(a,b){ return HOSTS.indexOf(cardKey(a)) - HOSTS.indexOf(cardKey(b)); });
-        var need=false;
-        for(var i=0;i<seatCards.length;i++){ if(list.children[i]!==seatCards[i]){ need=true; break; } }
-        if(need){ seatCards.forEach(function(card,i){ var ref=list.children[i]; if(ref!==card) list.insertBefore(card, ref||null); }); }
-        var firstGuest=null;
-        for(var j=0;j<list.children.length;j++){ var ch=list.children[j];
-          if(ch.classList&&ch.classList.contains('raw-seat-divider')) continue;
-          if(!isSeatCard(ch)){ firstGuest=ch; break; } }
-        var divider=list.querySelector('.raw-seat-divider');
-        if(firstGuest && seatCards.length){
-          if(!divider){ divider=document.createElement('div'); divider.className='raw-seat-divider'; divider.textContent='GUESTS'; }
-          if(divider.nextSibling!==firstGuest){ list.insertBefore(divider, firstGuest); }
-        } else if(divider){ divider.remove(); }
-      }catch(e){}
-      busy=false;
-    }
-    new MutationObserver(function(){ if(!busy) decorate(); }).observe(list,{childList:true});
-    setInterval(decorate, 1500);
-    decorate();
-  });
-})();
-</script>
+
+
 <script>
 /* A3 — authoritative control gate. Only the host-badge holder may push program
    changes (layout, audio, go-live, standby/logo hotkeys) to VDO, so multiple
    crew consoles can't fight over the program. Publishing your OWN camera is
    exempt (not a director action). If nobody holds the badge yet, the sole
    operator is allowed. host.js exposes window.RawHost.state(). */
-window.rawCanControl = function(){
-  try{
-    var s = window.RawHost && window.RawHost.state && window.RawHost.state();
-    if(!s || !s.badge || !s.badge.hostId) return true;   // no host claimed → allow
-    return s.badge.hostId === s.clientId;                 // only the badge holder
-  }catch(e){ return true; }
-};
+window.rawCanControl = function(){ return !!window.RawHost?.canControl(); };
 </script>
 <script>
 /* Greenroom hand-off — when a host confirms camera/mic in the greenroom we come
    back here with raw.host.enter=1: auto-join as that crew (no chooser flash) and
    let hostcam auto-publish their camera into their fixed seat box. One-shot. */
 (function(){
-  var entering=false; try{ entering = localStorage.getItem('raw.host.enter')==='1'; }catch(e){}
+  var entering=false; try{ entering = sessionStorage.getItem('raw.host.enter')==='1'; }catch(e){}
   if(!entering) return;
   window.__rawAutoEntering = true;                       // synchronous: chooser stays hidden
-  try{ localStorage.removeItem('raw.host.enter'); }catch(e){}
+  try{ sessionStorage.removeItem('raw.host.enter'); }catch(e){}
   function ready(fn){document.readyState!=='loading'?fn():document.addEventListener('DOMContentLoaded',fn);}
   ready(function(){
     var tries=0;
     (function go(){
       var f=document.querySelector('.raw-join-overlay form'), ident=null;
-      try{ ident=JSON.parse(localStorage.getItem('raw.host.identity')||'null'); }catch(e){}
+      try{ ident=JSON.parse(sessionStorage.getItem('raw.host.identity')||'null'); }catch(e){}
       if(f && ident && ident.name){
         var n=f.querySelector('.rj-name'), c=f.querySelector('.rj-code');
-        if(n) n.value=ident.name; if(c) c.value=ident.code||'123';
+        if(n) n.value=ident.name; if(c) c.value=ident.code||'';
         if(typeof f.requestSubmit==='function') f.requestSubmit();
         else f.dispatchEvent(new Event('submit',{cancelable:true,bubbles:true}));
         setTimeout(function(){ window.__rawAutoEntering=false; }, 2500);
@@ -1106,52 +885,6 @@ window.rawCanControl = function(){
 <script src="./broadcast.js" defer></script>
 <script src="./jumpin.js" defer></script>
 <script src="./hostcam.js" defer></script>
-<script>
-/* Auto-cleanup (v2): prune ONLY anonymous ghost peers — stray browser/test tabs
-   that join the room with no camera and no human name. app.js already retires
-   truly-disconnected peers on its own, and it never fetches thumbnails for
-   camera-off (videoMuted) or greenroom (queued) sources — so the old "no
-   thumbnail => ghost" test wrongly deleted real people. This version keys off
-   the LABEL instead: everyone who joins via Jump In / greenroom carries a real
-   name (label !== streamID), so we only ever cull nameless, never-video peers. */
-(function(){
-  function ready(fn){document.readyState!=='loading'?fn():document.addEventListener('DOMContentLoaded',fn);}
-  ready(function(){
-    var meta={};                         // per-source: first-seen + ever-had-video
-    var GRACE=25000;                     // give a real join plenty of time to show up
-    function app(){ return window.studioApp; }
-    function isSeat(id){ return /^seat_/.test(id||''); }
-    function assignedKey(id){ try{ return window.rawSeatmap ? window.rawSeatmap.keyOf(id) : ''; }catch(e){ return ''; } }
-    function anonymous(s){                // no human name assigned to this stream
-      return !s.label || String(s.label)===String(s.streamID);
-    }
-    function alive(s){                    // anything a real participant would be
-      return s.placeholder || s.queued || s.videoMuted || !anonymous(s) || !!assignedKey(s.streamID);
-    }
-    // Auto-kick: disconnect a ghost from the VDO room (director hangup), not just
-    // hide it. Only ever runs on no-video, un-named, un-assigned, non-seat peers,
-    // so a real host/guest feed (which has video) can never kick itself.
-    function hangup(id){ try{ var f=document.getElementById('director-frame');
-      if(f&&f.contentWindow) f.contentWindow.postMessage({function:'targetGuest',target:id,action:'hangup'},'*'); }catch(e){} }
-    function sweep(){
-      var a=app(); if(!a||!a.state||!a.state.sources) return;
-      var st=a.state, now=Date.now(), kill=[];
-      st.sources.forEach(function(s,id){
-        if(!s || isSeat(id) || s.placeholder) return;
-        var m=meta[id]||(meta[id]={first:now,ever:false});
-        if(s.thumbnailUrl) m.ever=true;                 // has (or had) real video → keep forever
-        if(alive(s)) return;                            // named / camera-off / queued / assigned → keep
-        // remaining: anonymous, never named, never any video → a dead stray tab.
-        if(!m.ever && (now-m.first)>GRACE) kill.push(id);
-      });
-      if(kill.length){
-        kill.forEach(function(id){ hangup(id); try{ st.sources.delete(id); }catch(e){} delete meta[id]; });
-        try{ if(a.activateScene && st.activeSceneId) a.activateScene(st.activeSceneId); }catch(e){}
-      }
-    }
-    setInterval(sweep,5000); setTimeout(sweep,10000);
-  });
-})();
-</script>
+
 </body>
 </html>

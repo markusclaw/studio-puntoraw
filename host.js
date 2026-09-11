@@ -8,7 +8,7 @@
  * the earliest-joined crew member still present becomes host.
  *
  * TWO TRANSPORTS, chosen by CONFIG.workerUrl:
- *   - "" (empty)  -> LOCAL mode: BroadcastChannel + localStorage (one machine,
+ *   - "" (empty)  -> LOCAL mode: BroadcastChannel + sessionStorage (one machine,
  *                    everyone treated as crew; for offline testing).
  *   - a wss URL   -> SERVER mode: Cloudflare Worker / Durable Object. Server
  *                    owns roles, presence, hand-off and seniority succession.
@@ -41,7 +41,7 @@ const runtime = {
 	mode: "local",
 	clientId: null,
 	name: null,                    // self-submitted display name (null until joined)
-	code: "",                      // crew code (kept in memory / localStorage)
+	code: "",                      // crew code (kept in memory / sessionStorage)
 	badge: { hostId: null, term: 0, updatedAt: 0 },
 	members: [],                   // [{id,name,role}] — from server, or derived locally
 	connected: false,
@@ -58,10 +58,10 @@ const runtime = {
 };
 
 function now() { return Date.now(); }
-function amHost() { return runtime.clientId && runtime.badge.hostId === runtime.clientId; }
+function amHost() { return !!runtime.client?.canControl(); }
 function memberById(id) { return runtime.members.find(m => m.id === id) || null; }
 function myMember() { return memberById(runtime.clientId); }
-function myRole() { const m = myMember(); return m ? m.role : (runtime.name ? "crew" : null); }
+function myRole() { const m = myMember(); return m ? m.role : null; }
 function nameOfId(id) { const m = memberById(id); return m ? m.name : (id ? "…" : "—"); }
 function presentCrew() {
 	return runtime.members.filter(m => m.role === "crew").sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
@@ -70,10 +70,10 @@ function presentCrew() {
 /* ---- identity persistence ---- */
 function getClientId() {
 	try {
-		let v = localStorage.getItem(CLIENT_ID_KEY);
+		let v = sessionStorage.getItem(CLIENT_ID_KEY);
 		if (!v) {
 			v = (crypto && crypto.randomUUID) ? crypto.randomUUID() : ("c" + now() + Math.floor(Math.random() * 1e9));
-			localStorage.setItem(CLIENT_ID_KEY, v);
+			sessionStorage.setItem(CLIENT_ID_KEY, v);
 		}
 		return v;
 	} catch (e) {
@@ -81,13 +81,13 @@ function getClientId() {
 	}
 }
 function loadIdentity() {
-	try { return JSON.parse(localStorage.getItem(IDENTITY_KEY) || "null"); } catch (e) { return null; }
+	try { return JSON.parse(sessionStorage.getItem(IDENTITY_KEY) || "null"); } catch (e) { return null; }
 }
 function saveIdentity(name, code) {
-	try { localStorage.setItem(IDENTITY_KEY, JSON.stringify({ name, code })); } catch (e) {}
+	try { sessionStorage.setItem(IDENTITY_KEY, JSON.stringify({ name, code })); } catch (e) {}
 }
 function clearIdentity() {
-	try { localStorage.removeItem(IDENTITY_KEY); } catch (e) {}
+	try { sessionStorage.removeItem(IDENTITY_KEY); } catch (e) {}
 }
 
 function getRoom() {
@@ -114,8 +114,8 @@ function passHostTo(targetId) {
 	else { runtime.badge = { hostId: targetId, term: runtime.badge.term + 1, updatedAt: now() }; broadcastLocalState(); render(); }
 }
 /* Host-only: let a knocking guest in, or turn them away (server mode). */
-function admitGuest(id) { if (myRole() === "crew") sendSocket({ type: "admit", target: id }); }
-function denyGuest(id)  { if (myRole() === "crew") sendSocket({ type: "deny",  target: id }); }
+function admitGuest(id) { if (amHost()) sendSocket({ type: "admit", target: id }); }
+function denyGuest(id)  { if (amHost()) sendSocket({ type: "deny",  target: id }); }
 function knockingGuests() { return runtime.members.filter(m => m.role === "guest" && !m.admitted); }
 
 /* Called from the join card. */
@@ -130,6 +130,9 @@ function joinAs(name, code) {
 	render();
 }
 function leave() {
+ window.rawHostCam?.stop();
+ sessionStorage.removeItem("raw.host.autopub");
+ window.__rawAutoEntering=false;
 	clearIdentity();
 	runtime.name = null;
 	runtime.code = "";
@@ -143,64 +146,26 @@ function leave() {
 /* ========================================================================
  * SERVER MODE
  * ====================================================================== */
-function sendSocket(obj) {
-	if (runtime.socket && runtime.socket.readyState === WebSocket.OPEN) {
-		try { runtime.socket.send(JSON.stringify(obj)); } catch (e) {}
-	}
-}
+function sendSocket(obj) { return runtime.client?.send(obj); }
 function connectSocket() {
-	if (!runtime.name) return;
-	closeSocket();
-	const base = CONFIG.workerUrl.replace(/\/+$/, "");
-	const params = new URLSearchParams({ id: runtime.clientId, name: runtime.name, code: runtime.code || "" });
-	const url = `${base}/room/${encodeURIComponent(getRoom())}?${params.toString()}`;
-
-	let socket;
-	try { socket = new WebSocket(url); } catch (e) { scheduleReconnect(); return; }
-	runtime.socket = socket;
-
-	socket.addEventListener("open", () => {
-		runtime.connected = true;
-		runtime.reconnectDelay = RECONNECT_MIN_MS;
-		render();
-	});
-	socket.addEventListener("message", event => {
-		let msg; try { msg = JSON.parse(event.data); } catch (e) { return; }
-		if (msg.type === "state") {
-			runtime.badge = msg.badge || { hostId: null, term: 0, updatedAt: 0 };
-			runtime.members = Array.isArray(msg.members) ? msg.members : [];
-			// Guests belong in the branded greenroom, not the director console.
-			if (myRole() === "guest" && !runtime._redirected) {
-				runtime._redirected = true;
-				// Carry the room password so the guest publishes into the SAME
-				// encrypted room the console listens on (else their video is dropped).
-				var _p = new URLSearchParams(location.search);
-				var _pass = (window.studioApp && window.studioApp.state && window.studioApp.state.password)
-					|| _p.get("password") || _p.get("pass") || _p.get("pw") || "";
-				var _gr = "greenroom.html?room=" + encodeURIComponent(getRoom()) + "&name=" + encodeURIComponent(runtime.name || "");
-				if (_pass) _gr += "&password=" + encodeURIComponent(_pass);
-				location.replace(_gr);
-				return;
-			}
-			render();
-		}
-	});
-	socket.addEventListener("close", () => { runtime.connected = false; render(); scheduleReconnect(); });
-	socket.addEventListener("error", () => { try { socket.close(); } catch (e) {} });
+  if (!runtime.name) return;
+  if(runtime.client) runtime.client.close();
+  const room=getRoom(), session=window.rawSession(room);
+  let seat=''; try{seat=sessionStorage.getItem('raw.host.seat')||'';}catch{}
+  const client=new window.RawRoomClient(room,{...session,name:runtime.name,seat,code:runtime.code,ready:true});
+  runtime.client=client; runtime.clientId=session.id;
+  client.addEventListener('joined',()=>{runtime.connected=true;render();});
+  client.addEventListener('state',e=>{
+    runtime.connected=client.joined; runtime.badge=e.detail.badge; runtime.members=e.detail.members;
+    window.dispatchEvent(new CustomEvent('raw-room-state',{detail:e.detail})); render();
+  });
+  client.addEventListener('offline',()=>{runtime.connected=false;window.rawHostCam?.stop(false);render();});
+  client.addEventListener('fatal',e=>{runtime.connected=false;runtime.name=null;window.rawHostCam?.stop(false);render();window.__rawAutoEntering=false;alert(e.detail);});
+  client.addEventListener('error',e=>{window.dispatchEvent(new CustomEvent('raw-room-error',{detail:e.detail}));});
+  client.connect();
 }
-function closeSocket() {
-	if (runtime.socket) {
-		try { runtime.socket.onclose = null; runtime.socket.close(); } catch (e) {}
-		runtime.socket = null;
-	}
-	runtime.connected = false;
-}
-function scheduleReconnect() {
-	if (!runtime.name || runtime.mode !== "server") return;
-	clearTimeout(runtime.reconnectTimer);
-	runtime.reconnectTimer = setTimeout(connectSocket, runtime.reconnectDelay);
-	runtime.reconnectDelay = Math.min(runtime.reconnectDelay * 2, RECONNECT_MAX_MS);
-}
+function closeSocket(){ runtime.client?.close(true);runtime.client=null;runtime.connected=false; }
+function scheduleReconnect() {} // RawRoomClient owns bounded reconnects.
 
 /* ========================================================================
  * LOCAL MODE (offline fallback; everyone treated as crew)
@@ -212,9 +177,9 @@ function createLocalTransport(onMessage) {
 	return {
 		post(msg) {
 			try { channel && channel.postMessage(msg); } catch (e) {}
-			if (msg.type === "state") { try { localStorage.setItem(CHANNEL_NAME, JSON.stringify(msg.state)); } catch (e) {} }
+			if (msg.type === "state") { try { sessionStorage.setItem(CHANNEL_NAME, JSON.stringify(msg.state)); } catch (e) {} }
 		},
-		readPersisted() { try { return JSON.parse(localStorage.getItem(CHANNEL_NAME) || "null"); } catch (e) { return null; } }
+		readPersisted() { try { return JSON.parse(sessionStorage.getItem(CHANNEL_NAME) || "null"); } catch (e) { return null; } }
 	};
 }
 function broadcastLocalState() { runtime.transport.post({ type: "state", state: runtime.badge }); }
@@ -474,7 +439,7 @@ function render() {
 
 	// Knocking tray — only crew can admit; hidden when nobody is waiting.
 	if (runtime.el.knock) {
-		const knockers = (role === "crew") ? knockingGuests() : [];
+		const knockers = amHost() ? knockingGuests() : [];
 		runtime.el.knock.dataset.show = knockers.length ? "true" : "false";
 		if (knockers.length) {
 			runtime.el.knock.innerHTML =
@@ -529,6 +494,7 @@ function init() {
 
 	window.RawHost = {
 		runtime, claimHost, passHostTo, joinAs, leave, admitGuest, denyGuest,
+        canControl: amHost, send: sendSocket, snapshot: () => runtime.client?.snapshot,
 		state() {
 			return {
 				mode: runtime.mode, clientId: runtime.clientId, name: runtime.name,

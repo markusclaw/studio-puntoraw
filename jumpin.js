@@ -4,9 +4,9 @@
    Enhancement over app.js/host.js (drives their form, no core edits). */
 (function(){
   var SEATS=[
-    {key:'rj',   name:'RJ',   code:'123', img:'avatars/rj.jpg',   role:'Host · Audio'},
-    {key:'greg', name:'Greg', code:'123', img:'avatars/greg.jpg', role:'Host'},
-    {key:'rafa', name:'Rafa', code:'123', img:'avatars/rafa.jpg', role:'Host'},
+    {key:'rj',   name:'RJ',   code:'', img:'avatars/rj.jpg',   role:'Host · Audio'},
+    {key:'greg', name:'Greg', code:'', img:'avatars/greg.jpg', role:'Host'},
+    {key:'rafa', name:'Rafa', code:'', img:'avatars/rafa.jpg', role:'Host'},
     {key:'guest',name:'',     code:'',    img:'avatars/guest.jpg', role:'Guest', guest:true}
   ];
   function ready(fn){document.readyState!=='loading'?fn():document.addEventListener('DOMContentLoaded',fn);}
@@ -57,14 +57,9 @@
       if(e.key==='Enter'){ e.preventDefault(); var v=(e.target.value||'').trim()||'Guest'; submitJoin(v,''); }
     });
 
-    function submitJoin(name, code){
-      var f=document.querySelector('.raw-join-overlay form'); if(!f) return;
-      var n=f.querySelector('.rj-name'), c=f.querySelector('.rj-code');
-      if(n) n.value=name; if(c) c.value=code||'';
-      if(typeof f.requestSubmit==='function') f.requestSubmit();
-      else f.dispatchEvent(new Event('submit',{cancelable:true,bubbles:true}));
-      chosen=true; chosenAt=Date.now(); ov.hidden=true;
-      setTimeout(function(){ var g=document.querySelector('.raw-join-overlay'); if(g&&g.dataset.show==='true'){ chosen=false; ov.hidden=false; } }, 4000);
+    function submitJoin(name){
+      var q=new URLSearchParams({room:roomOf(),name:name});var pw=passOf();if(pw)q.set('password',pw);
+      location.href='greenroom.html?'+q;
     }
 
     // Mirror the host identity gate: show Jump In while not joined, hide once joined.

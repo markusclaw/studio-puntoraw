@@ -2494,3 +2494,12 @@ body[data-transcript="on"] .raw-tr-live{display:inline-block}
 .raw-seat-assign[data-on="true"]{
   color:#1a120b; background:var(--bronze,#C6763B); border-color:var(--bronze,#C6763B);
 }
+
+/* Shared program / telemetry separation. */
+#director-frame { position:fixed !important; left:-10000px !important; top:0 !important; width:640px !important; height:360px !important; opacity:0 !important; pointer-events:none !important; }
+#program-frame { z-index:2; background:#0c0b0a; }
+#stage-bg { z-index:1; }
+.raw-hostcam-pub { position:fixed; left:-10000px; top:0; width:640px; height:360px; border:0; }
+body:not([data-raw-self="host"]) #stage-overlay { pointer-events:none; }
+body:not([data-raw-self="host"]) .raw-quickbar { pointer-events:none; opacity:.5; }
+.raw-seat-assign,.raw-seat-del { display:none !important; }
