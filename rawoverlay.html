@@ -172,7 +172,7 @@ const bool = (k, d) => { const v = Q.get(k); return v === null ? d : (v === '1' 
 
 const cfg = {
   text:     Q.get('text')    || '.RAW>',
-  tagline:  Q.get('tagline') !== null ? Q.get('tagline') : 'MASTERMIND SESSIONS',
+  tagline:  Q.get('tagline') !== null ? Q.get('tagline') : 'MASTER_SESSIONS',
   pos:      Q.get('pos')     || 'br',          // tl tr bl br
   width:    num('w', 260),                      // wordmark width, css px
   margin:   num('margin', 48),
@@ -423,7 +423,7 @@ if (cfg.ui) {
 
   const $ = id => document.getElementById(id);
   const DEF = { pos:'br', w:260, margin:48, opacity:0.92, interval:22, jitter:10, dur:950,
-                glitch:0.5, color:'#FFFFFF', text:'.RAW>', tagline:'MASTERMIND SESSIONS',
+                glitch:0.5, color:'#FFFFFF', text:'.RAW>', tagline:'MASTER_SESSIONS',
                 showtag:true, cursor:true, onload:true };
 
   function syncUI() {

@@ -6,17 +6,18 @@
     var stage=document.querySelector('.stage-aspect')||document.querySelector('.stage-shell');
     if(!stage) return;
 
-    /* ---- animated logo bug ---- */
-    var logo=document.createElement('div'); logo.className='raw-logo-bug'; logo.hidden=true;
-    logo.innerHTML='<span class="rlb-ep">03</span>'
-      +'<span class="rlb-title">.RAW</span>'
-      +'<span class="rlb-sub">master_sessions</span>';
+    /* ---- animated logo bug (embeds the real .RAW> OBS overlay so the console
+           preview matches what OBS composites on the broadcast) ---- */
+    var LOGO_SRC='rawoverlay.html?pos=br&w=150&margin=18&interval=26&tagline=MASTER_SESSIONS';
+    var logo=document.createElement('iframe'); logo.className='raw-logo-bug'; logo.hidden=true;
+    logo.setAttribute('scrolling','no'); logo.setAttribute('tabindex','-1'); logo.title='.RAW overlay';
     stage.appendChild(logo);
     var logoBtn=null;
     function toggleLogo(force){
       var show=(typeof force==='boolean')?force:logo.hidden;
-      logo.hidden=!show;
-      if(show){ logo.classList.remove('rlb-anim'); void logo.offsetWidth; logo.classList.add('rlb-anim'); }
+      // blank the src when hidden so the animation loop stops; reload on show → fresh decode-in
+      if(show){ logo.src=LOGO_SRC; logo.hidden=false; }
+      else { logo.hidden=true; logo.src='about:blank'; }
       if(logoBtn) logoBtn.setAttribute('aria-pressed', String(!logo.hidden));
     }
 
