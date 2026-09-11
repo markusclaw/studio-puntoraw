@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>.RAW&gt; — OBS Overlay</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: transparent;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  body.preview {
+    background-color: #101014;
+    background-image:
+      linear-gradient(45deg, #1b1b21 25%, transparent 25%, transparent 75%, #1b1b21 75%),
+      linear-gradient(45deg, #1b1b21 25%, transparent 25%, transparent 75%, #1b1b21 75%);
+    background-size: 48px 48px;
+    background-position: 0 0, 24px 24px;
+  }
+
+  #bug {
+    position: fixed;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    line-height: 0;
+    will-change: transform, opacity;
+  }
+  #bug.align-right { align-items: flex-end; }
+
+  #mark { display: block; image-rendering: pixelated; }
+
+  #tag {
+    font-family: "Helvetica Neue", "Inter", "Segoe UI", Arial, sans-serif;
+    font-weight: 300;
+    text-transform: uppercase;
+    white-space: nowrap;
+    line-height: 1;
+    user-select: none;
+  }
+
+  /* ---------- control panel (only when ?ui=1) ---------- */
+  #panel {
+    position: fixed; top: 0; right: 0; width: 300px; max-height: 100vh;
+    overflow-y: auto; box-sizing: border-box; padding: 16px 18px 22px;
+    background: rgba(14,14,18,.94);
+    border-left: 1px solid #2a2a33;
+    color: #d7d7de;
+    font: 12px/1.5 "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    z-index: 99;
+  }
+  #panel h2 { margin: 0 0 14px; font-size: 12px; letter-spacing: .18em; color: #fff; font-weight: 500; }
+  #panel label { display: block; margin: 13px 0 4px; color: #8b8b98; letter-spacing: .06em; font-size: 10px; text-transform: uppercase; }
+  #panel input[type=range] { width: 100%; accent-color: #fff; }
+  #panel select, #panel input[type=text], #panel input[type=color] {
+    width: 100%; box-sizing: border-box; background: #1c1c24; color: #e8e8ef;
+    border: 1px solid #33333f; border-radius: 3px; padding: 5px 7px; font: inherit;
+  }
+  #panel input[type=color] { padding: 2px; height: 30px; }
+  #panel .row { display: flex; gap: 8px; align-items: center; }
+  #panel .row > * { flex: 1; }
+  #panel .val { color: #fff; float: right; font-size: 10px; }
+  #panel .check { display: flex; align-items: center; gap: 7px; margin-top: 10px; color: #d7d7de; text-transform: none; font-size: 11px; letter-spacing: 0; }
+  #panel .check input { accent-color: #fff; }
+  #panel button {
+    width: 100%; margin-top: 9px; padding: 8px; cursor: pointer;
+    background: #2b2b36; color: #fff; border: 1px solid #3d3d4a; border-radius: 3px;
+    font: inherit; letter-spacing: .08em; text-transform: uppercase; font-size: 10px;
+  }
+  #panel button:hover { background: #363644; }
+  #panel #url {
+    margin-top: 12px; word-break: break-all; color: #7ee0b8; font-size: 10px;
+    background: #16161c; border: 1px solid #2a2a33; border-radius: 3px; padding: 8px; max-height: 90px; overflow-y: auto;
+  }
+  #panel hr { border: 0; border-top: 1px solid #26262f; margin: 16px 0 4px; }
+  #panel .note { color: #6a6a78; font-size: 10px; margin-top: 14px; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<div id="bug">
+  <canvas id="mark"></canvas>
+  <div id="tag"></div>
+</div>
+
+<script>
+/* =======================================================================
+   .RAW>  ANIMATED OVERLAY  —  OBS Browser Source
+   Self-contained. No network, no fonts to install. Transparent background.
+   Configure via URL query params — see the ?ui=1 panel.
+   ======================================================================= */
+
+/* ---------- 5x7 pixel font ---------- */
+const F = {
+  'A':'01110,10001,10001,11111,10001,10001,10001',
+  'B':'11110,10001,10001,11110,10001,10001,11110',
+  'C':'01110,10001,10000,10000,10000,10001,01110',
+  'D':'11110,10001,10001,10001,10001,10001,11110',
+  'E':'11111,10000,10000,11110,10000,10000,11111',
+  'F':'11111,10000,10000,11110,10000,10000,10000',
+  'G':'01110,10001,10000,10111,10001,10001,01111',
+  'H':'10001,10001,10001,11111,10001,10001,10001',
+  'I':'11111,00100,00100,00100,00100,00100,11111',
+  'J':'00111,00010,00010,00010,00010,10010,01100',
+  'K':'10001,10010,10100,11000,10100,10010,10001',
+  'L':'10000,10000,10000,10000,10000,10000,11111',
+  'M':'10001,11011,10101,10101,10001,10001,10001',
+  'N':'10001,11001,10101,10011,10001,10001,10001',
+  'O':'01110,10001,10001,10001,10001,10001,01110',
+  'P':'11110,10001,10001,11110,10000,10000,10000',
+  'Q':'01110,10001,10001,10001,10101,10010,01101',
+  'R':'11110,10001,10001,11110,10100,10010,10001',
+  'S':'01111,10000,10000,01110,00001,00001,11110',
+  'T':'11111,00100,00100,00100,00100,00100,00100',
+  'U':'10001,10001,10001,10001,10001,10001,01110',
+  'V':'10001,10001,10001,10001,10001,01010,00100',
+  'W':'10001,10001,10001,10101,10101,11011,10001',
+  'X':'10001,10001,01010,00100,01010,10001,10001',
+  'Y':'10001,10001,01010,00100,00100,00100,00100',
+  'Z':'11111,00001,00010,00100,01000,10000,11111',
+  '0':'01110,10011,10101,10101,11001,10001,01110',
+  '1':'00100,01100,00100,00100,00100,00100,01110',
+  '2':'01110,10001,00001,00010,00100,01000,11111',
+  '3':'11111,00010,00100,00010,00001,10001,01110',
+  '4':'00010,00110,01010,10010,11111,00010,00010',
+  '5':'11111,10000,11110,00001,00001,10001,01110',
+  '6':'00110,01000,10000,11110,10001,10001,01110',
+  '7':'11111,00001,00010,00100,01000,01000,01000',
+  '8':'01110,10001,10001,01110,10001,10001,01110',
+  '9':'01110,10001,10001,01111,00001,00010,01100',
+  '.':'00000,00000,00000,00000,00000,01100,01100',
+  '>':'11000,01100,00110,00011,00110,01100,11000',
+  '<':'00011,00110,01100,11000,01100,00110,00011',
+  '/':'00001,00001,00010,00100,01000,10000,10000',
+  '\\':'10000,10000,01000,00100,00010,00001,00001',
+  '_':'00000,00000,00000,00000,00000,00000,11111',
+  '-':'00000,00000,00000,11111,00000,00000,00000',
+  '=':'00000,00000,11111,00000,11111,00000,00000',
+  '+':'00000,00100,00100,11111,00100,00100,00000',
+  '*':'00000,10101,01110,11111,01110,10101,00000',
+  '#':'01010,01010,11111,01010,11111,01010,01010',
+  '%':'11001,11010,00010,00100,01000,01011,10011',
+  '$':'00100,01111,10100,01110,00101,11110,00100',
+  '&':'01100,10010,10100,01000,10101,10010,01101',
+  '@':'01110,10001,10111,10101,10111,10000,01110',
+  '!':'00100,00100,00100,00100,00100,00000,00100',
+  '?':'01110,10001,00001,00010,00100,00000,00100',
+  ':':'00000,01100,01100,00000,01100,01100,00000',
+  '[':'01110,01000,01000,01000,01000,01000,01110',
+  ']':'01110,00010,00010,00010,00010,00010,01110',
+  '{':'00110,01000,01000,11000,01000,01000,00110',
+  '}':'01100,00010,00010,00011,00010,00010,01100',
+  '(':'00110,01000,01000,01000,01000,01000,00110',
+  ')':'01100,00010,00010,00010,00010,00010,01100',
+  '|':'00100,00100,00100,00100,00100,00100,00100',
+  '^':'00100,01010,10001,00000,00000,00000,00000',
+  '~':'00000,00000,01001,10110,00000,00000,00000',
+  ' ':'00000,00000,00000,00000,00000,00000,00000'
+};
+const GLYPH = {};
+for (const k in F) GLYPH[k] = F[k].split(',');
+
+const CW = 5, CH = 7, GAP = 1;          // glyph cell metrics, in font-pixels
+const POOL = '01#/\\<>[]{}|*+=$%&@?!_-~ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('');
+const rnd  = a => a[(Math.random() * a.length) | 0];
+
+/* ---------- config ---------- */
+const Q = new URLSearchParams(location.search);
+const num = (k, d) => { const v = parseFloat(Q.get(k)); return isNaN(v) ? d : v; };
+const bool = (k, d) => { const v = Q.get(k); return v === null ? d : (v === '1' || v === 'true'); };
+
+const cfg = {
+  text:     Q.get('text')    || '.RAW>',
+  tagline:  Q.get('tagline') !== null ? Q.get('tagline') : 'MASTERMIND SESSIONS',
+  pos:      Q.get('pos')     || 'br',          // tl tr bl br
+  width:    num('w', 260),                      // wordmark width, css px
+  margin:   num('margin', 48),
+  color:    Q.get('color')   || '#FFFFFF',
+  opacity:  num('opacity', 0.92),
+  interval: num('interval', 22),                // seconds between bursts
+  jitter:   num('jitter', 10),                  // +/- randomness on interval
+  dur:      num('dur', 950),                    // burst length, ms
+  glitch:   num('glitch', 0.5),                 // 0..1 rgb-split intensity
+  cursor:   bool('cursor', true),
+  showTag:  bool('showtag', true),
+  onload:   bool('onload', true),
+  preview:  bool('preview', false),
+  ui:       bool('ui', false)
+};
+
+/* ---------- layout ---------- */
+const bug    = document.getElementById('bug');
+const canvas = document.getElementById('mark');
+const ctx    = canvas.getContext('2d');
+const tagEl  = document.getElementById('tag');
+
+let scale = 1, cssW = 0, cssH = 0, cells = 0;
+
+function layout() {
+  document.body.classList.toggle('preview', cfg.preview);
+
+  cells = cfg.text.length + (cfg.cursor ? 1 : 0);
+  const unitsW = cells * (CW + GAP) - GAP;
+  const dpr = window.devicePixelRatio || 1;
+
+  scale = Math.max(1, Math.round(cfg.width * dpr / unitsW));   // integer device px per font px
+  canvas.width  = unitsW * scale;
+  canvas.height = CH * scale;
+  cssW = canvas.width / dpr;
+  cssH = canvas.height / dpr;
+  canvas.style.width  = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+  ctx.imageSmoothingEnabled = false;
+
+  const right = cfg.pos === 'tr' || cfg.pos === 'br';
+  const bottom = cfg.pos === 'bl' || cfg.pos === 'br';
+  bug.style.top = bug.style.bottom = bug.style.left = bug.style.right = 'auto';
+  bug.style[bottom ? 'bottom' : 'top'] = cfg.margin + 'px';
+  // when the settings panel is open, nudge a right-anchored bug clear of it
+  bug.style[right ? 'right' : 'left'] = (cfg.margin + (cfg.ui && right ? 320 : 0)) + 'px';
+  bug.classList.toggle('align-right', right);
+  bug.style.opacity = cfg.opacity;
+
+  // tagline: size it, then track it out to match the wordmark width exactly
+  tagEl.style.display = cfg.showTag && cfg.tagline ? 'block' : 'none';
+  if (cfg.showTag && cfg.tagline) {
+    tagEl.style.color = cfg.color;
+    tagEl.style.fontSize = Math.max(7, cssW * 0.072) + 'px';
+    tagEl.style.marginTop = (cssH * 0.36) + 'px';
+    tagEl.style.letterSpacing = '0px';
+    tagEl.style.marginRight = '0px';
+    tagEl.textContent = cfg.tagline;
+    const natural = tagEl.getBoundingClientRect().width;
+    const n = cfg.tagline.length;
+    if (n > 1) {
+      const track = Math.max(0, (cssW - natural) / (n - 1));
+      tagEl.style.letterSpacing = track + 'px';
+      tagEl.style.marginRight = (-track) + 'px';   // kill trailing space so it aligns flush
+    }
+  }
+}
+
+/* ---------- drawing ---------- */
+function drawPass(chars, color, dx, dy, alpha) {
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = color;
+  for (let i = 0; i < chars.length; i++) {
+    const g = GLYPH[chars[i]] || GLYPH[' '];
+    const ox = i * (CW + GAP) * scale;
+    for (let y = 0; y < CH; y++) {
+      const row = g[y];
+      for (let x = 0; x < CW; x++) {
+        if (row[x] === '1') {
+          ctx.fillRect(ox + (x * scale) + dx, (y * scale) + dy, scale, scale);
+        }
+      }
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+function render(chars, intensity) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const off = intensity * cfg.glitch * scale * 1.4;
+  if (off > 0.4) {
+    ctx.globalCompositeOperation = 'lighter';
+    drawPass(chars, '#ff0044', -off, 0, 0.55);
+    drawPass(chars, '#00e5ff',  off, 0, 0.55);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  drawPass(chars, cfg.color, 0, 0, 1);
+}
+
+/* ---------- animation ---------- */
+const CURSOR = '_';
+let burstStart = -1, settleAt = [], lastShuffle = 0, current = [];
+let cursorOn = true, cursorT = 0, nextBurst = 0;
+
+function beginBurst() {
+  const n = cfg.text.length;
+  burstStart = performance.now();
+  settleAt = [];
+  for (let i = 0; i < n; i++) {
+    // characters resolve left-to-right with a little randomness — reads like a decode
+    settleAt.push(cfg.dur * (0.28 + 0.62 * (i / Math.max(1, n - 1))) + Math.random() * cfg.dur * 0.12);
+  }
+  scheduleNext();
+}
+
+function scheduleNext() {
+  const gap = Math.max(2, cfg.interval + (Math.random() * 2 - 1) * cfg.jitter);
+  nextBurst = performance.now() + cfg.dur + gap * 1000;
+}
+
+function scrambleTag(progress) {
+  if (!cfg.showTag || !cfg.tagline) return;
+  if (progress >= 1) { tagEl.textContent = cfg.tagline; return; }
+  let out = '';
+  for (let i = 0; i < cfg.tagline.length; i++) {
+    const c = cfg.tagline[i];
+    const settled = (i / cfg.tagline.length) < progress * 1.15;
+    out += (c === ' ' || settled) ? c : rnd(POOL);
+  }
+  tagEl.textContent = out;
+}
+
+let tagShuffle = 0;
+
+function frame(now) {
+  const base = cfg.text.split('');
+  let intensity = 0;
+
+  if (burstStart >= 0) {
+    const t = now - burstStart;
+    if (t >= cfg.dur) {
+      burstStart = -1;
+      current = base;
+      scrambleTag(1);
+    } else {
+      if (now - lastShuffle > 45) {           // ~22fps scramble — chunky, not noisy
+        lastShuffle = now;
+        current = base.map((c, i) => (t >= settleAt[i] ? c : rnd(POOL)));
+      }
+      intensity = Math.max(0, 1 - t / cfg.dur);
+      if (now - tagShuffle > 55) { tagShuffle = now; scrambleTag(t / cfg.dur); }
+    }
+  } else {
+    current = base;
+  }
+
+  if (now >= nextBurst && burstStart < 0) beginBurst();
+
+  if (now - cursorT > (cursorOn ? 900 : 520)) { cursorT = now; cursorOn = !cursorOn; }
+
+  const chars = current.slice();
+  if (cfg.cursor) chars.push(cursorOn ? CURSOR : ' ');
+  render(chars, intensity);
+
+  requestAnimationFrame(frame);
+}
+
+/* ---------- boot ---------- */
+function boot() {
+  layout();
+  current = cfg.text.split('');
+  scrambleTag(1);
+  nextBurst = performance.now() + (cfg.onload ? 400 : cfg.interval * 1000);
+  requestAnimationFrame(frame);
+}
+
+window.addEventListener('resize', layout);
+document.addEventListener('click', () => { if (burstStart < 0) beginBurst(); });
+document.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); if (burstStart < 0) beginBurst(); } });
+
+boot();
+
+/* =======================================================================
+   CONTROL PANEL  —  only renders with ?ui=1
+   ======================================================================= */
+if (cfg.ui) {
+  const p = document.createElement('div');
+  p.id = 'panel';
+  p.innerHTML = `
+    <h2>.RAW&gt; OVERLAY</h2>
+
+    <label>Corner</label>
+    <select id="c-pos">
+      <option value="br">Bottom right</option>
+      <option value="bl">Bottom left</option>
+      <option value="tr">Top right</option>
+      <option value="tl">Top left</option>
+    </select>
+
+    <label>Width <span class="val" id="v-w"></span></label>
+    <input type="range" id="c-w" min="90" max="620" step="2">
+
+    <label>Margin <span class="val" id="v-margin"></span></label>
+    <input type="range" id="c-margin" min="0" max="200" step="2">
+
+    <label>Opacity <span class="val" id="v-opacity"></span></label>
+    <input type="range" id="c-opacity" min="0.15" max="1" step="0.01">
+
+    <hr>
+
+    <label>Seconds between scrambles <span class="val" id="v-interval"></span></label>
+    <input type="range" id="c-interval" min="3" max="120" step="1">
+
+    <label>Randomness <span class="val" id="v-jitter"></span></label>
+    <input type="range" id="c-jitter" min="0" max="45" step="1">
+
+    <label>Scramble length <span class="val" id="v-dur"></span></label>
+    <input type="range" id="c-dur" min="250" max="3000" step="50">
+
+    <label>RGB split <span class="val" id="v-glitch"></span></label>
+    <input type="range" id="c-glitch" min="0" max="1" step="0.02">
+
+    <hr>
+
+    <label>Colour</label>
+    <div class="row">
+      <input type="color" id="c-color">
+      <input type="text" id="c-colorhex">
+    </div>
+
+    <label>Wordmark</label>
+    <input type="text" id="c-text">
+
+    <label>Tagline</label>
+    <input type="text" id="c-tagline">
+
+    <div class="check"><input type="checkbox" id="c-showtag"><span>Show tagline</span></div>
+    <div class="check"><input type="checkbox" id="c-cursor"><span>Blinking cursor</span></div>
+    <div class="check"><input type="checkbox" id="c-onload"><span>Scramble on load / scene change</span></div>
+    <div class="check"><input type="checkbox" id="c-preview"><span>Preview backdrop</span></div>
+
+    <button id="c-fire">Trigger scramble now</button>
+    <button id="c-copy">Copy OBS URL</button>
+    <div id="url"></div>
+    <div class="note">Click anywhere on the overlay (or hit Space) to fire a scramble manually. Copy the URL above into the OBS Browser Source — it carries all these settings.</div>
+  `;
+  document.body.appendChild(p);
+
+  const $ = id => document.getElementById(id);
+  const DEF = { pos:'br', w:260, margin:48, opacity:0.92, interval:22, jitter:10, dur:950,
+                glitch:0.5, color:'#FFFFFF', text:'.RAW>', tagline:'MASTERMIND SESSIONS',
+                showtag:true, cursor:true, onload:true };
+
+  function syncUI() {
+    $('c-pos').value = cfg.pos;
+    $('c-w').value = cfg.width;            $('v-w').textContent = Math.round(cfg.width) + 'px';
+    $('c-margin').value = cfg.margin;      $('v-margin').textContent = Math.round(cfg.margin) + 'px';
+    $('c-opacity').value = cfg.opacity;    $('v-opacity').textContent = Math.round(cfg.opacity * 100) + '%';
+    $('c-interval').value = cfg.interval;  $('v-interval').textContent = cfg.interval + 's';
+    $('c-jitter').value = cfg.jitter;      $('v-jitter').textContent = '±' + cfg.jitter + 's';
+    $('c-dur').value = cfg.dur;            $('v-dur').textContent = cfg.dur + 'ms';
+    $('c-glitch').value = cfg.glitch;      $('v-glitch').textContent = Math.round(cfg.glitch * 100) + '%';
+    $('c-color').value = cfg.color;        $('c-colorhex').value = cfg.color;
+    $('c-text').value = cfg.text;
+    $('c-tagline').value = cfg.tagline;
+    $('c-showtag').checked = cfg.showTag;
+    $('c-cursor').checked = cfg.cursor;
+    $('c-onload').checked = cfg.onload;
+    $('c-preview').checked = cfg.preview;
+    buildURL();
+  }
+
+  function buildURL() {
+    const q = new URLSearchParams();
+    const add = (k, v, d) => { if (String(v) !== String(d)) q.set(k, v); };
+    add('pos', cfg.pos, DEF.pos);
+    add('w', Math.round(cfg.width), DEF.w);
+    add('margin', Math.round(cfg.margin), DEF.margin);
+    add('opacity', cfg.opacity, DEF.opacity);
+    add('interval', cfg.interval, DEF.interval);
+    add('jitter', cfg.jitter, DEF.jitter);
+    add('dur', cfg.dur, DEF.dur);
+    add('glitch', cfg.glitch, DEF.glitch);
+    add('color', cfg.color, DEF.color);
+    add('text', cfg.text, DEF.text);
+    add('tagline', cfg.tagline, DEF.tagline);
+    add('showtag', cfg.showTag ? 1 : 0, DEF.showtag ? 1 : 0);
+    add('cursor', cfg.cursor ? 1 : 0, DEF.cursor ? 1 : 0);
+    add('onload', cfg.onload ? 1 : 0, DEF.onload ? 1 : 0);
+    const s = q.toString();
+    $('url').textContent = location.origin === 'null'
+      ? location.pathname + (s ? '?' + s : '')
+      : location.origin + location.pathname + (s ? '?' + s : '');
+  }
+
+  const on = (id, ev, fn) => $(id).addEventListener(ev, e => { fn(e.target); layout(); syncUI(); });
+  on('c-pos','change',    t => cfg.pos = t.value);
+  on('c-w','input',       t => cfg.width = +t.value);
+  on('c-margin','input',  t => cfg.margin = +t.value);
+  on('c-opacity','input', t => cfg.opacity = +t.value);
+  on('c-interval','input',t => cfg.interval = +t.value);
+  on('c-jitter','input',  t => cfg.jitter = +t.value);
+  on('c-dur','input',     t => cfg.dur = +t.value);
+  on('c-glitch','input',  t => cfg.glitch = +t.value);
+  on('c-color','input',   t => cfg.color = t.value.toUpperCase());
+  on('c-colorhex','change', t => { if (/^#[0-9a-f]{6}$/i.test(t.value)) cfg.color = t.value.toUpperCase(); });
+  on('c-text','input',    t => cfg.text = t.value.toUpperCase() || '.RAW>');
+  on('c-tagline','input', t => cfg.tagline = t.value.toUpperCase());
+  on('c-showtag','change',t => cfg.showTag = t.checked);
+  on('c-cursor','change', t => cfg.cursor = t.checked);
+  on('c-onload','change', t => cfg.onload = t.checked);
+  on('c-preview','change',t => cfg.preview = t.checked);
+
+  $('c-fire').addEventListener('click', e => { e.stopPropagation(); if (burstStart < 0) beginBurst(); });
+  $('c-copy').addEventListener('click', e => {
+    e.stopPropagation();
+    navigator.clipboard.writeText($('url').textContent).then(
+      () => { $('c-copy').textContent = 'Copied'; setTimeout(() => $('c-copy').textContent = 'Copy OBS URL', 1200); },
+      () => { $('c-copy').textContent = 'Select it manually'; }
+    );
+  });
+  p.addEventListener('click', e => e.stopPropagation());
+
+  syncUI();
+}
+</script>
+</body>
+</html>
