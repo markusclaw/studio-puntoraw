@@ -2330,12 +2330,23 @@ body[data-transcript="on"] .raw-tr-live{display:inline-block}
 .raw-bcast--warn:hover{border-color:#E0483B;color:#fff}
 .raw-bcast--warn[aria-pressed="true"]{background:#E0483B;border-color:#E0483B;color:#fff;box-shadow:0 0 12px rgba(224,72,59,.45)}
 
-/* logo bug (broadcast ident) — embeds rawoverlay.html so the console preview
-   shows the exact animated .RAW> overlay OBS composites on the broadcast. The
-   iframe covers the stage; the overlay positions its own bug (bottom-right). */
-.raw-logo-bug{position:absolute;inset:0;width:100%;height:100%;border:0;z-index:8;
-  background:transparent;pointer-events:none}
+/* logo bug (broadcast corner ident) — static .RAW / MASTER_SESSIONS lockup,
+   drawn directly in the stage corner (no iframe → cannot whiten the stage).
+   White over the program video, soft shadow so it reads on any footage. */
+.raw-logo-bug{position:absolute;right:18px;bottom:16px;z-index:8;pointer-events:none;
+  display:flex;flex-direction:column;align-items:flex-start;gap:1px;
+  padding:0;background:none;filter:drop-shadow(0 2px 10px rgba(0,0,0,.8))}
 .raw-logo-bug[hidden]{display:none}
+.raw-logo-bug .rlb-ep{position:relative;font-family:var(--mono,ui-monospace,monospace);
+  font-size:10px;font-weight:600;letter-spacing:.18em;color:#F2EEE6;padding-top:8px;margin-bottom:1px}
+.raw-logo-bug .rlb-ep::before{content:"";position:absolute;top:0;left:1px;width:20px;height:2px;
+  background:#F2EEE6;border-radius:2px}
+.raw-logo-bug .rlb-title{font-family:"Helvetica Neue",Arial,"Arial Black",sans-serif;
+  font-weight:900;font-size:30px;line-height:.9;letter-spacing:-.015em;color:#F5F1E9}
+.raw-logo-bug .rlb-sub{font-family:var(--mono,ui-monospace,monospace);
+  font-size:11px;font-weight:500;letter-spacing:.1em;color:rgba(245,241,233,.92);margin-top:2px}
+.raw-logo-bug.rlb-anim{animation:rlbin .5s ease both}
+@keyframes rlbin{from{opacity:0;transform:translateY(7px) scale(.97)}to{opacity:1;transform:none}}
 
 /* standby overlay (covers the program stage) */
 .raw-standby-overlay{position:absolute;inset:0;z-index:22;background:#000;border-radius:inherit;overflow:hidden}

@@ -6,18 +6,20 @@
     var stage=document.querySelector('.stage-aspect')||document.querySelector('.stage-shell');
     if(!stage) return;
 
-    /* ---- animated logo bug (embeds the real .RAW> OBS overlay so the console
-           preview matches what OBS composites on the broadcast) ---- */
-    var LOGO_SRC='rawoverlay.html?pos=br&w=150&margin=18&interval=26&tagline=MASTER_SESSIONS';
-    var logo=document.createElement('iframe'); logo.className='raw-logo-bug'; logo.hidden=true;
-    logo.setAttribute('scrolling','no'); logo.setAttribute('tabindex','-1'); logo.title='.RAW overlay';
+    /* ---- logo bug — static .RAW / MASTER_SESSIONS lockup drawn directly in the
+           stage (no iframe: stacking a full-bleed iframe over the VDO frame made
+           the whole stage paint white in some browsers). The animated glitch
+           version lives in rawoverlay.html as the OBS Browser Source. ---- */
+    var logo=document.createElement('div'); logo.className='raw-logo-bug'; logo.hidden=true;
+    logo.innerHTML='<span class="rlb-ep">03</span>'
+      +'<span class="rlb-title">.RAW</span>'
+      +'<span class="rlb-sub">MASTER_SESSIONS</span>';
     stage.appendChild(logo);
     var logoBtn=null;
     function toggleLogo(force){
       var show=(typeof force==='boolean')?force:logo.hidden;
-      // blank the src when hidden so the animation loop stops; reload on show → fresh decode-in
-      if(show){ logo.src=LOGO_SRC; logo.hidden=false; }
-      else { logo.hidden=true; logo.src='about:blank'; }
+      logo.hidden=!show;
+      if(show){ logo.classList.remove('rlb-anim'); void logo.offsetWidth; logo.classList.add('rlb-anim'); }
       if(logoBtn) logoBtn.setAttribute('aria-pressed', String(!logo.hidden));
     }
 

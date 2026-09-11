@@ -977,9 +977,18 @@
       if(busy) return; busy=true;
       try{
         var cards=Array.prototype.slice.call(list.querySelectorAll('.source-card'));
+        // A host seat is "occupied" when a LIVE cam source (seat_<key>_cam — not a
+        // placeholder) exists for that key. Hide the reserved placeholder so the
+        // host's live face is the single card for that seat (no duplicate).
+        var occupied={};
+        cards.forEach(function(c){ var id=c.dataset.sourceId||''; if(hostSeat(id)&&!phById(id)) occupied[seatKey(id)]=true; });
         cards.forEach(function(c){
           var id=c.dataset.sourceId||'';
-          if(hostSeat(id)){ c.setAttribute('data-host-seat','true'); return; }
+          if(hostSeat(id)){
+            c.setAttribute('data-host-seat','true');
+            c.style.display = (phById(id) && occupied[seatKey(id)]) ? 'none' : '';
+            return;
+          }
           if(phById(id) && !c.querySelector('.raw-seat-del')){
             var x=document.createElement('button'); x.type='button'; x.className='raw-seat-del';
             x.title='Remove seat'; x.setAttribute('aria-label','Remove seat'); x.textContent='×';
@@ -987,7 +996,7 @@
             c.appendChild(x);
           }
         });
-        var seatCards=cards.filter(function(c){ return hostSeat(c.dataset.sourceId); })
+        var seatCards=cards.filter(function(c){ return hostSeat(c.dataset.sourceId) && c.style.display!=='none'; })
           .sort(function(a,b){ return HOSTS.indexOf(seatKey(a.dataset.sourceId)) - HOSTS.indexOf(seatKey(b.dataset.sourceId)); });
         var need=false;
         for(var i=0;i<seatCards.length;i++){ if(list.children[i]!==seatCards[i]){ need=true; break; } }
