@@ -2412,3 +2412,46 @@ body[data-transcript="on"] .raw-tr-live{display:inline-block}
   color:#1a120b!important; background:#d9524b!important; border-color:#d9524b!important;
   font-weight:600; box-shadow:0 2px 12px rgba(217,82,75,.4)!important;
 }
+
+/* ============================================================
+   RESPONSIVE / MOBILE (audit pass) — the live-show redesign and
+   the injected desk / toolbar / rails shipped with no responsive
+   rules. Keep the stage inside its grid cell so the CONTROL DESK
+   always fits, stop horizontal overflow on phones, and give the
+   faders a vertical mode that works on modern Safari / iOS.
+   ============================================================ */
+
+/* 1) Desktop/laptop: fit the stage to its cell (leaving room for the
+      control desk) instead of sizing off 100vh and pushing the desk
+      off the bottom edge. */
+@media (min-width: 901px){
+  .program-panel{ min-height:0; }
+  .program-panel .stage-shell{ grid-template-rows:minmax(0,1fr)!important; min-height:0; }
+  .program-panel .stage-aspect{
+    width:auto!important; height:100%!important;
+    max-width:100%!important; max-height:min(100%, calc(100vh - 300px))!important;
+    margin-inline:auto;
+  }
+  .raw-desk{ margin-top:10px; }
+}
+
+/* 2) Phones / narrow: never let anything force a horizontal scroll. */
+@media (max-width: 900px){
+  html, body{ overflow-x:hidden; }
+  .studio-workspace{ width:100%; max-width:100vw; overflow-x:hidden; }
+  .topbar{ flex-wrap:wrap; row-gap:8px; height:auto; }
+  .topbar__identity, .topbar__status{ flex-wrap:wrap; row-gap:6px; }
+  .raw-session{ margin-left:0; }
+  .program-toolbar{ flex-wrap:wrap; row-gap:8px; }
+  .program-toolbar__actions{ flex-wrap:wrap; row-gap:6px; width:100%; }
+  .raw-modes, .raw-bcast{ flex-wrap:wrap; }
+  .program-panel .stage-aspect{ width:100%!important; height:auto!important; max-width:100%!important; }
+  .raw-desk{ max-width:100%; }
+  .raw-desk__rack{ -webkit-overflow-scrolling:touch; }
+  /* sidebar collapse handles are meaningless once panels stack */
+  .raw-rail, .raw-rail__toggle{ display:none!important; }
+}
+
+/* 3) Vertical faders that work on current Safari/iOS (the old
+      -webkit slider-vertical is dropped in newer WebKit). */
+.raw-fader{ writing-mode: vertical-lr; direction: rtl; }
