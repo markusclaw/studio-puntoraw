@@ -50,32 +50,27 @@ host**, so don't skip this.)
 
 ## Step 2 — Deploy the static site
 
-The site is served by Cloudflare (the response headers match Cloudflare Pages).
-Find out how it's wired, then use the matching path:
+Your site is a **Cloudflare Pages project named `studio-puntoraw`**, connected to
+the GitHub repo **`markusclaw/studio-puntoraw`**. It auto-deploys
+`studio.puntoraw.org` whenever the production branch (`main`) is pushed. So
+publishing the site = merging the branch into `main` and pushing:
 
-Cloudflare dashboard → **Workers & Pages** → open the Pages project for
-`studio.puntoraw.org` → **Settings → Builds & deployments**.
-
-**Path A — the project shows a connected Git repo (most common).**
-Merge the branch to your production branch and push; Cloudflare rebuilds:
 ```bash
 cd ~/Documents/studio-puntoraw
 git checkout main
 git merge audit-implementation
 git push origin main
 ```
-(If `git push` asks for credentials, use your GitHub login / token.)
 
-**Path B — no connected repo (direct upload).**
-Upload the current folder straight to the Pages project (replace `PROJECT` with
-the project's name from the dashboard):
-```bash
-cd ~/Documents/studio-puntoraw
-npx wrangler pages deploy . --project-name PROJECT
-```
+Cloudflare Pages picks up the push and rebuilds automatically — watch it under
+Workers & Pages -> `studio-puntoraw` -> Deployments until the new build goes
+live. (If `git push` asks for credentials, use your GitHub login / token.)
 
-Either way, still commit the branch to `main` afterward so your source of truth
-matches what's live.
+**Order matters:** do Step 1 (the worker) *first*, then this push, back to back,
+while you're off-air. The new site speaks protocol 2 and needs the protocol-2
+worker already live; and the moment you deploy the v2 worker, the *old* live site
+stops working until this push lands — so keep the gap short and don't do it
+mid-show.
 
 ## Step 3 — Verify the site (2 minutes)
 
