@@ -33,6 +33,10 @@
       tiles.appendChild(t);
     });
 
+    function roomOf(){ try{ if(window.studioApp&&window.studioApp.state&&window.studioApp.state.room) return window.studioApp.state.room; }catch(e){}
+      var p=new URLSearchParams(location.search); return p.get('room')||p.get('r')||p.get('director')||p.get('dir')||'master_sessions_raw'; }
+    function passOf(){ try{ if(window.studioApp&&window.studioApp.state&&window.studioApp.state.password) return window.studioApp.state.password; }catch(e){}
+      var p=new URLSearchParams(location.search); return p.get('password')||p.get('pass')||p.get('pw')||''; }
     function choose(s,t){
       if(s.guest){
         guestBox.hidden=false;
@@ -40,7 +44,11 @@
         var gi=ov.querySelector('.ji-guest-name'); try{gi.focus();}catch(e){}
         return;
       }
-      submitJoin(s.name, s.code);
+      // Host → greenroom first (confirm camera + mic); the greenroom then sends
+      // them into the console, where their camera activates their fixed seat box.
+      var q='crew=1&seat='+encodeURIComponent(s.key)+'&name='+encodeURIComponent(s.name)+'&room='+encodeURIComponent(roomOf());
+      var pw=passOf(); if(pw) q+='&password='+encodeURIComponent(pw);
+      location.href='greenroom.html?'+q;
     }
     ov.querySelector('.ji-guest-go').addEventListener('click',function(){
       var v=(ov.querySelector('.ji-guest-name').value||'').trim()||'Guest'; submitJoin(v,'');
@@ -64,6 +72,8 @@
       var g=document.querySelector('.raw-join-overlay');
       if(!g){ setTimeout(attach,150); return; }
       function apply(){
+        // Coming back from the greenroom we auto-join — don't flash the chooser.
+        if(window.__rawAutoEntering){ ov.hidden=true; return; }
         var show=g.dataset.show==='true';
         // M4: if the gate is shown again well after our submit, the user has
         // left (or the join failed) — clear `chosen` so the chooser is the

@@ -1074,6 +1074,34 @@ window.rawCanControl = function(){
   }catch(e){ return true; }
 };
 </script>
+<script>
+/* Greenroom hand-off — when a host confirms camera/mic in the greenroom we come
+   back here with raw.host.enter=1: auto-join as that crew (no chooser flash) and
+   let hostcam auto-publish their camera into their fixed seat box. One-shot. */
+(function(){
+  var entering=false; try{ entering = localStorage.getItem('raw.host.enter')==='1'; }catch(e){}
+  if(!entering) return;
+  window.__rawAutoEntering = true;                       // synchronous: chooser stays hidden
+  try{ localStorage.removeItem('raw.host.enter'); }catch(e){}
+  function ready(fn){document.readyState!=='loading'?fn():document.addEventListener('DOMContentLoaded',fn);}
+  ready(function(){
+    var tries=0;
+    (function go(){
+      var f=document.querySelector('.raw-join-overlay form'), ident=null;
+      try{ ident=JSON.parse(localStorage.getItem('raw.host.identity')||'null'); }catch(e){}
+      if(f && ident && ident.name){
+        var n=f.querySelector('.rj-name'), c=f.querySelector('.rj-code');
+        if(n) n.value=ident.name; if(c) c.value=ident.code||'123';
+        if(typeof f.requestSubmit==='function') f.requestSubmit();
+        else f.dispatchEvent(new Event('submit',{cancelable:true,bubbles:true}));
+        setTimeout(function(){ window.__rawAutoEntering=false; }, 2500);
+        return;
+      }
+      if(tries++<60) setTimeout(go,120); else window.__rawAutoEntering=false;
+    })();
+  });
+})();
+</script>
 <script src="./desk.js" defer></script>
 <script src="./broadcast.js" defer></script>
 <script src="./jumpin.js" defer></script>
@@ -1093,12 +1121,18 @@ window.rawCanControl = function(){
     var GRACE=25000;                     // give a real join plenty of time to show up
     function app(){ return window.studioApp; }
     function isSeat(id){ return /^seat_/.test(id||''); }
+    function assignedKey(id){ try{ return window.rawSeatmap ? window.rawSeatmap.keyOf(id) : ''; }catch(e){ return ''; } }
     function anonymous(s){                // no human name assigned to this stream
       return !s.label || String(s.label)===String(s.streamID);
     }
     function alive(s){                    // anything a real participant would be
-      return s.placeholder || s.queued || s.videoMuted || !anonymous(s);
+      return s.placeholder || s.queued || s.videoMuted || !anonymous(s) || !!assignedKey(s.streamID);
     }
+    // Auto-kick: disconnect a ghost from the VDO room (director hangup), not just
+    // hide it. Only ever runs on no-video, un-named, un-assigned, non-seat peers,
+    // so a real host/guest feed (which has video) can never kick itself.
+    function hangup(id){ try{ var f=document.getElementById('director-frame');
+      if(f&&f.contentWindow) f.contentWindow.postMessage({function:'targetGuest',target:id,action:'hangup'},'*'); }catch(e){} }
     function sweep(){
       var a=app(); if(!a||!a.state||!a.state.sources) return;
       var st=a.state, now=Date.now(), kill=[];
@@ -1106,13 +1140,12 @@ window.rawCanControl = function(){
         if(!s || isSeat(id) || s.placeholder) return;
         var m=meta[id]||(meta[id]={first:now,ever:false});
         if(s.thumbnailUrl) m.ever=true;                 // has (or had) real video → keep forever
-        if(alive(s)) return;                            // named / camera-off / queued → keep
-        // remaining: anonymous, never named. Only cull once it's clearly a dead
-        // no-video tab (past grace AND never produced a single frame).
+        if(alive(s)) return;                            // named / camera-off / queued / assigned → keep
+        // remaining: anonymous, never named, never any video → a dead stray tab.
         if(!m.ever && (now-m.first)>GRACE) kill.push(id);
       });
       if(kill.length){
-        kill.forEach(function(id){ try{ st.sources.delete(id); }catch(e){} delete meta[id]; });
+        kill.forEach(function(id){ hangup(id); try{ st.sources.delete(id); }catch(e){} delete meta[id]; });
         try{ if(a.activateScene && st.activeSceneId) a.activateScene(st.activeSceneId); }catch(e){}
       }
     }

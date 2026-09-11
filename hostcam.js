@@ -32,8 +32,11 @@
     function norm(x){ return String(x||'').trim().toLowerCase(); }
     function slug(x){ return norm(x).replace(/[^a-z0-9]/g,''); }
     function seatKeyOf(id){ var m=/^seat_([a-z0-9]+)_/i.exec(id||''); return m?m[1].toLowerCase():''; }
-    // My seat key + the deterministic id my camera will publish under.
-    function mySeatKey(){ return slug(myName()) || 'host'; }
+    function LSget(k){ try{ return localStorage.getItem(k)||''; }catch(e){ return ''; } }
+    function lsSeat(){ return LSget('raw.host.seat').toLowerCase().replace(/[^a-z0-9]/g,''); }
+    // My seat key (from the greenroom choice, else my name) + the deterministic
+    // id my camera publishes under, so it lands on my fixed box.
+    function mySeatKey(){ return lsSeat() || slug(myName()) || 'host'; }
     function myPushId(){ return 'seat_'+mySeatKey()+'_cam'; }
     // window.RAW_SEAT_CAM lets the crew-rail block recognise the live-cam id shape.
     window.RAW_SEAT_CAM = function(id){ return /^seat_[a-z0-9]+_cam$/i.test(id||''); };
@@ -48,7 +51,12 @@
       var nm=myName()||'Host';
       var q='room='+encodeURIComponent(room())+'&webcam&push='+encodeURIComponent(myPushId())
           +'&label='+encodeURIComponent(nm)+'&cleanoutput&autostart&nosettings';
+      // Use the camera/mic the host picked in the greenroom (matched by label).
+      var cam=LSget('raw.host.cam'), mic=LSget('raw.host.mic');
+      if(cam) q+='&videodevice='+encodeURIComponent(cam);
+      if(mic) q+='&audiodevice='+encodeURIComponent(mic);
       if(pass()) q+='&password='+encodeURIComponent(pass());
+      try{ localStorage.setItem('raw.host.autopub','1'); }catch(e){}   // stay on-cam across reloads
       pubFrame=document.createElement('iframe');
       pubFrame.allow='camera; microphone; autoplay; display-capture';
       pubFrame.title='My camera';
@@ -59,6 +67,7 @@
     function stopPub(){
       if(!publishing) return;
       if(pubFrame){ try{ pubFrame.src='about:blank'; }catch(e){} pubFrame.remove(); pubFrame=null; }
+      try{ localStorage.setItem('raw.host.autopub','0'); }catch(e){}   // I turned my cam off
       publishing=false; syncBtn(); setTimeout(reconcile,300);
     }
     function toggle(){ publishing?stopPub():startPub(); }
@@ -134,6 +143,14 @@
       else if(!recTimer){ recTimer=setInterval(reconcile,2000); reconcile(); }
     });
     reconcile();
+
+    // Auto-activate: after the greenroom hand-off (or if this host was on-cam and
+    // reloaded), publish their camera into their fixed box with no extra click.
+    function maybeAuto(){
+      var want=false; try{ want=localStorage.getItem('raw.host.autopub')==='1'; }catch(e){}
+      if(want && !publishing && myName()) startPub();
+    }
+    setTimeout(maybeAuto, 1400);
 
     window.rawHostCam={ toggle:toggle, start:startPub, stop:stopPub, isPublishing:function(){return publishing;},
                         seatKey:mySeatKey, pushId:myPushId };

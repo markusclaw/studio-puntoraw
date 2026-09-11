@@ -123,6 +123,10 @@ const ROOM = params.get("room") || "master_sessions_raw";
 // URLs or the guest's video silently never reaches the console. Carried in the
 // invite link + guest redirect. Empty = VDO default (matches an unset console).
 const PASS = params.get("password") || params.get("pass") || params.get("pw") || "";
+// Crew path: a host confirms camera/mic here, then we hand them to the console
+// where their camera activates their FIXED seat box (seat_<key>_cam).
+const CREW = params.get("crew") === "1";
+const SEAT = (params.get("seat") || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 const CLIENT_ID_KEY = "raw.host.clientId";
 
 function id(x){ return document.getElementById(x); }
@@ -287,6 +291,30 @@ function enter(){
   const v=els.nameInput.value.trim().slice(0,60);
   if(!v){ els.nameInput.focus(); return; }
   NAME=v;
+
+  // CREW: this is A/V confirmation only. Save the seat + chosen devices, release
+  // the camera, and hand off to the console — where the camera re-publishes once
+  // under the fixed id seat_<seat>_cam and activates that host's box.
+  if(CREW){
+    const camLabel = els.camSel.selectedOptions[0] ? els.camSel.selectedOptions[0].textContent : "";
+    const micLabel = els.micSel.selectedOptions[0] ? els.micSel.selectedOptions[0].textContent : "";
+    const seat = SEAT || v.toLowerCase().replace(/[^a-z0-9]/g,"");
+    try{
+      localStorage.setItem("raw.host.identity", JSON.stringify({ name:v, code:"123" }));
+      localStorage.setItem("raw.host.seat", seat);
+      localStorage.setItem("raw.host.cam", camLabel && camLabel!=="Default" ? camLabel : "");
+      localStorage.setItem("raw.host.mic", micLabel && micLabel!=="Default" ? micLabel : "");
+      localStorage.setItem("raw.host.enter", "1");    // one-shot: auto-join the console
+      localStorage.setItem("raw.host.autopub", "1");  // and auto-publish my camera
+    }catch(e){}
+    stopMeter();
+    if(previewStream){ previewStream.getTracks().forEach(t=>t.stop()); previewStream=null; }
+    let url = "index.html?room="+encodeURIComponent(ROOM);
+    if(PASS) url += "&password="+encodeURIComponent(PASS);
+    location.href = url;
+    return;
+  }
+
   els.who.innerHTML="You&nbsp;<b>"+esc(NAME)+"</b>";
   stopMeter();
   if(previewStream){ previewStream.getTracks().forEach(t=>t.stop()); previewStream=null; }
