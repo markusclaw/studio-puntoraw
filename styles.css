@@ -2477,3 +2477,20 @@ body[data-transcript="on"] .raw-tr-live{display:inline-block}
 .studio-workspace[data-raw-self="observer"] .raw-hostcam-btn{
   opacity:1!important;pointer-events:auto!important;filter:none!important;
 }
+
+/* ============================================================
+   SEAT ASSIGN — per-feed "SEAT" button. VDO gives incoming feeds
+   random ids and no usable label, so the director assigns a feed
+   to a host seat with one click (cycles none → RJ → Greg → Rafa).
+   ============================================================ */
+.source-card{position:relative}
+.raw-seat-assign{
+  position:absolute; top:8px; left:8px; z-index:6; cursor:pointer;
+  font-family:var(--mono,ui-monospace,monospace); font-size:9px; font-weight:600;
+  letter-spacing:.12em; text-transform:uppercase; padding:3px 7px; border-radius:5px;
+  color:rgba(236,231,221,.72); background:rgba(0,0,0,.6); border:1px solid rgba(255,255,255,.2);
+}
+.raw-seat-assign:hover{ color:#fff; border-color:rgba(255,255,255,.45); }
+.raw-seat-assign[data-on="true"]{
+  color:#1a120b; background:var(--bronze,#C6763B); border-color:var(--bronze,#C6763B);
+}

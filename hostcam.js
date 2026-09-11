@@ -95,12 +95,14 @@
         if(src && !src.placeholder && !src.disconnected && !src.queued) out.push(src);
       }); return out;
     }
+    function assignedKey(id){ try{ return window.rawSeatmap ? window.rawSeatmap.keyOf(id) : ''; }catch(e){ return ''; } }
     function occupantFor(ph, live){
       var key=seatKeyOf(ph.streamID);
+      for(var i=0;i<live.length;i++){ if(key && assignedKey(live[i].streamID)===key) return live[i]; } // manual assignment wins
       for(var i=0;i<live.length;i++){
         var src=live[i];
-        if(key && seatKeyOf(src.streamID)===key) return src;            // deterministic id match
-        if(norm(src.label) && norm(src.label)===norm(ph.label)) return src; // label fallback
+        if(key && seatKeyOf(src.streamID)===key) return src;            // deterministic cam id
+        if(norm(src.label) && norm(src.label)===norm(ph.label) && norm(src.label)!==norm(src.streamID)) return src; // label (only if real)
       }
       return null;
     }

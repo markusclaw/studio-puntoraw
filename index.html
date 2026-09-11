@@ -959,52 +959,93 @@
 })();
 </script>
 <script>
-/* Crew rail: pin RJ/Greg/Rafa (host seats) to the top, guests below with a
-   divider, and give guest seats a clean remove (x). App has no seat-delete. */
+/* Crew rail: pin RJ/Greg/Rafa (host seats) to the top. A host's live feed drops
+   into its seat automatically when published through the Cam button (which uses
+   a deterministic seat_<key>_cam id), OR the director assigns ANY feed to a seat
+   with the per-feed "SEAT" button — which works no matter what random id / empty
+   label VDO gives the feed. Guests sit below a divider with a remove (x). */
 (function(){
   function ready(fn){document.readyState!=='loading'?fn():document.addEventListener('DOMContentLoaded',fn);}
+  // Shared seat-assignment map. The director console is the source of truth for
+  // the program; persisted so it survives re-renders within a session.
+  window.rawSeatmap = window.rawSeatmap || {
+    get:function(){ try{return JSON.parse(localStorage.getItem('raw.seatmap')||'{}');}catch(e){return {};} },
+    set:function(id,key){ var m=this.get(); if(key)m[id]=key; else delete m[id];
+      try{localStorage.setItem('raw.seatmap',JSON.stringify(m));}catch(e){} },
+    keyOf:function(id){ return String((this.get()[id]||'')).toLowerCase(); }
+  };
   ready(function(){
     var list=document.getElementById('source-list'); if(!list) return;
     var HOSTS=['rj','greg','rafa'];
+    var SEATLABEL={rj:'RJ',greg:'Greg',rafa:'Rafa'};
+    var SEATSLOT={rj:1,greg:2,rafa:3};
     function hostSeat(id){ return /^seat_/.test(id||''); }
     function seatKey(id){ var m=/^seat_([a-z0-9]+)_/i.exec(id||''); return m?m[1].toLowerCase():''; }
-    function phById(id){ var st=window.studioApp&&window.studioApp.state; return st?((st.placeholders||[]).find(function(p){return p.streamID===id;})||null):null; }
-    function removeSeat(id){ var app=window.studioApp; if(!app||!app.state)return;
-      app.state.placeholders=(app.state.placeholders||[]).filter(function(p){return p.streamID!==id;});
-      if(app.activateScene&&app.state.activeSceneId) app.activateScene(app.state.activeSceneId); }
+    function st(){ return window.studioApp&&window.studioApp.state; }
+    function phById(id){ var s=st(); return s?((s.placeholders||[]).find(function(p){return p.streamID===id;})||null):null; }
+    function liveById(id){ var s=st(); return (s&&s.sources&&s.sources.get)?s.sources.get(id):null; }
+    function assignedKey(id){ return window.rawSeatmap.keyOf(id); }
+    function cardKey(c){ var id=(c.dataset&&c.dataset.sourceId)||''; return hostSeat(id)?seatKey(id):assignedKey(id); }
+    function isSeatCard(c){ var id=(c.dataset&&c.dataset.sourceId)||''; return hostSeat(id) || !!assignedKey(id); }
+    function reRender(){ var a=window.studioApp; if(a&&a.activateScene&&a.state&&a.state.activeSceneId) a.activateScene(a.state.activeSceneId); }
+    function removeSeat(id){ var a=window.studioApp; if(!a||!a.state)return;
+      a.state.placeholders=(a.state.placeholders||[]).filter(function(p){return p.streamID!==id;}); reRender(); }
+    function assignTo(id,key){
+      window.rawSeatmap.set(id,key||'');
+      var live=liveById(id); if(live) live.slot = key ? (SEATSLOT[key]||live.slot) : false;
+      reRender();
+    }
     var busy=false;
     function decorate(){
       if(busy) return; busy=true;
       try{
         var cards=Array.prototype.slice.call(list.querySelectorAll('.source-card'));
-        // A host seat is "occupied" when a LIVE cam source (seat_<key>_cam — not a
-        // placeholder) exists for that key. Hide the reserved placeholder so the
-        // host's live face is the single card for that seat (no duplicate).
+        // A seat is "occupied" when a LIVE feed (not a placeholder) is its cam id
+        // or is assigned to it → its reserved placeholder is hidden.
         var occupied={};
-        cards.forEach(function(c){ var id=c.dataset.sourceId||''; if(hostSeat(id)&&!phById(id)) occupied[seatKey(id)]=true; });
+        cards.forEach(function(c){ var id=c.dataset.sourceId||''; if(phById(id))return; var k=cardKey(c); if(k) occupied[k]=true; });
         cards.forEach(function(c){
-          var id=c.dataset.sourceId||'';
+          var id=c.dataset.sourceId||'', mk=assignedKey(id);
           if(hostSeat(id)){
             c.setAttribute('data-host-seat','true');
             c.style.display = (phById(id) && occupied[seatKey(id)]) ? 'none' : '';
             return;
           }
-          if(phById(id) && !c.querySelector('.raw-seat-del')){
+          // guest feed — an assigned one becomes that host's seat
+          if(mk){ c.setAttribute('data-host-seat','true');
+            var nm=c.querySelector('.source-card__name'); if(nm && SEATLABEL[mk]) nm.textContent=SEATLABEL[mk];
+          } else { c.removeAttribute('data-host-seat'); }
+          c.style.display='';
+          // "SEAT" assign button on any live guest feed (cycles none→RJ→Greg→Rafa)
+          if(liveById(id)){
+            var b=c.querySelector('.raw-seat-assign');
+            if(!b){ b=document.createElement('button'); b.type='button'; b.className='raw-seat-assign';
+              b.title='Assign this feed to a host seat';
+              b.addEventListener('click',function(e){ e.stopPropagation(); e.preventDefault();
+                var order=['','rj','greg','rafa'], cur=assignedKey(id), ni=(order.indexOf(cur)+1)%order.length;
+                assignTo(id, order[ni]); });
+              c.appendChild(b);
+            }
+            b.textContent = mk ? SEATLABEL[mk] : 'SEAT';
+            b.setAttribute('data-on', mk ? 'true' : 'false');
+          }
+          // remove (x) only for reserved guest placeholders (not mapped feeds)
+          if(phById(id) && !mk && !c.querySelector('.raw-seat-del')){
             var x=document.createElement('button'); x.type='button'; x.className='raw-seat-del';
             x.title='Remove seat'; x.setAttribute('aria-label','Remove seat'); x.textContent='×';
             x.addEventListener('click',function(e){ e.stopPropagation(); e.preventDefault(); removeSeat(id); });
             c.appendChild(x);
           }
         });
-        var seatCards=cards.filter(function(c){ return hostSeat(c.dataset.sourceId) && c.style.display!=='none'; })
-          .sort(function(a,b){ return HOSTS.indexOf(seatKey(a.dataset.sourceId)) - HOSTS.indexOf(seatKey(b.dataset.sourceId)); });
+        var seatCards=cards.filter(function(c){ return isSeatCard(c) && c.style.display!=='none'; })
+          .sort(function(a,b){ return HOSTS.indexOf(cardKey(a)) - HOSTS.indexOf(cardKey(b)); });
         var need=false;
         for(var i=0;i<seatCards.length;i++){ if(list.children[i]!==seatCards[i]){ need=true; break; } }
         if(need){ seatCards.forEach(function(card,i){ var ref=list.children[i]; if(ref!==card) list.insertBefore(card, ref||null); }); }
         var firstGuest=null;
         for(var j=0;j<list.children.length;j++){ var ch=list.children[j];
           if(ch.classList&&ch.classList.contains('raw-seat-divider')) continue;
-          if(!hostSeat(ch.dataset&&ch.dataset.sourceId)){ firstGuest=ch; break; } }
+          if(!isSeatCard(ch)){ firstGuest=ch; break; } }
         var divider=list.querySelector('.raw-seat-divider');
         if(firstGuest && seatCards.length){
           if(!divider){ divider=document.createElement('div'); divider.className='raw-seat-divider'; divider.textContent='GUESTS'; }
@@ -1014,6 +1055,7 @@
       busy=false;
     }
     new MutationObserver(function(){ if(!busy) decorate(); }).observe(list,{childList:true});
+    setInterval(decorate, 1500);
     decorate();
   });
 })();
