@@ -19,7 +19,8 @@
     function state(){ var a=app(); return a&&a.state; }
     function esc(x){ return String(x||'').replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];}); }
     function frameWin(){ var f=document.getElementById('director-frame'); return f&&f.contentWindow; }
-    function sendVolume(id,val){ var w=frameWin(); if(!w||!id)return; try{ w.postMessage({target:id, volume:Math.round(val)}, '*'); }catch(e){} }
+    function canCtl(){ return !(window.rawCanControl && !window.rawCanControl()); }   // A3: host-badge holder only
+    function sendVolume(id,val){ if(!canCtl())return; var w=frameWin(); if(!w||!id)return; try{ w.postMessage({target:id, volume:Math.round(val)}, '*'); }catch(e){} }
 
     function liveList(){ var st=state(),a=[]; if(st&&st.sources) st.sources.forEach(function(s){ if(s&&!s.disconnected&&!s.queued&&!s.placeholder) a.push(s); }); return a; }
     function seatList(){ var st=state(); return st?(st.placeholders||[]).filter(function(p){return !p.sample;}):[]; }
@@ -39,7 +40,7 @@
       return order.map(function(k){return byName[k];}).sort(function(a,b){return (a.slot||90)-(b.slot||90);});
     }
 
-    function setMute(id,want){ var a=app(),st=state(); if(!a||!st)return; var s=st.sources.get(id); if(!s)return; if(!!s.muted!==!!want) a.toggleSourceControl(id,'mic'); }
+    function setMute(id,want){ if(!canCtl())return; var a=app(),st=state(); if(!a||!st)return; var s=st.sources.get(id); if(!s)return; if(!!s.muted!==!!want) a.toggleSourceControl(id,'mic'); }
     function reconcileSolo(){
       var any=Object.keys(solo).some(function(k){return solo[k];});
       if(any){
@@ -68,8 +69,8 @@
           +'<div class="raw-strip__state"></div>';
         var fader=strip.querySelector('.raw-fader');
         fader.addEventListener('input', function(){ faders[ch.name]=+fader.value; if(id) sendVolume(id,+fader.value); });
-        var m=strip.querySelector('[data-act="mute"]'); if(m) m.addEventListener('click', function(){ if(id) app().toggleSourceControl(id,'mic'); });
-        var so=strip.querySelector('[data-act="solo"]'); if(so) so.addEventListener('click', function(){ if(!id)return; solo[id]=!solo[id]; reconcileSolo(); });
+        var m=strip.querySelector('[data-act="mute"]'); if(m) m.addEventListener('click', function(){ if(!canCtl()||!id)return; app().toggleSourceControl(id,'mic'); });
+        var so=strip.querySelector('[data-act="solo"]'); if(so) so.addEventListener('click', function(){ if(!canCtl()||!id)return; solo[id]=!solo[id]; reconcileSolo(); });
         rack.appendChild(strip);
       });
       var master=document.createElement('div'); master.className='raw-strip raw-strip--master';

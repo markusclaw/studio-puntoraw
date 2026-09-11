@@ -639,7 +639,7 @@
     function participants(){try{var src=S().sources;if(!src||!src.forEach)return[];var o=[];src.forEach(function(x){if(x&&!x.disconnected&&!x.placeholder&&!x.queued)o.push(x.label||x.streamID||'Guest');});return o;}catch(e){return[];}}
     function saveEpisode(s,e){var rec={room:S().room||'',episode:(document.getElementById('topbar-episode')||{}).textContent||'',startedAt:s,endedAt:e,durationMs:e-s,participants:participants(),transcript:((document.getElementById('transcript-log')||{}).innerText||'').trim()};try{var k='raw.episodes.'+(rec.room||'default');var a=JSON.parse(localStorage.getItem(k)||'[]');a.push(rec);localStorage.setItem(k,JSON.stringify(a).slice(0,500000));}catch(e2){}try{console.log('[.RAW] episode recorded',rec);}catch(e3){}}
     function toast(m){var t=document.createElement('div');t.textContent=m;t.style.cssText='position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:9999;background:#1c1a18;color:#E6DFD2;border:1px solid rgba(255,255,255,.14);padding:9px 16px;border-radius:8px;font-family:monospace;font-size:12px;box-shadow:0 10px 30px rgba(0,0,0,.5)';document.body.appendChild(t);setTimeout(function(){t.remove();},3600);}
-    primary.addEventListener('click',function(){if(document.body.dataset.session!=='live'){goLive();return;}if(primary.dataset.confirm==='1'){clearTimeout(confirmT);primary.dataset.confirm='';primary.classList.remove('raw-primary--confirm');endSession();return;}primary.dataset.confirm='1';primary.classList.add('raw-primary--confirm');primary.textContent='Confirm end?';confirmT=setTimeout(function(){primary.dataset.confirm='';primary.classList.remove('raw-primary--confirm');primary.textContent='■ End Session';},3000);});
+    primary.addEventListener('click',function(){if(window.rawCanControl&&!window.rawCanControl()){toast('Only the host can go live — take control first');return;}if(document.body.dataset.session!=='live'){goLive();return;}if(primary.dataset.confirm==='1'){clearTimeout(confirmT);primary.dataset.confirm='';primary.classList.remove('raw-primary--confirm');endSession();return;}primary.dataset.confirm='1';primary.classList.add('raw-primary--confirm');primary.textContent='Confirm end?';confirmT=setTimeout(function(){primary.dataset.confirm='';primary.classList.remove('raw-primary--confirm');primary.textContent='■ End Session';},3000);});
     edit.addEventListener('click',function(){if(root.dataset.mode==='live'){if(edit.dataset.confirm==='1'){clearTimeout(editT);edit.dataset.confirm='';setMode('build');return;}edit.dataset.confirm='1';edit.textContent='Edit live?';editT=setTimeout(function(){edit.dataset.confirm='';edit.textContent='Edit';},3000);}else{setMode('live');}});
     document.body.dataset.session='idle';setMode('build');
   });
@@ -1008,6 +1008,20 @@
     decorate();
   });
 })();
+</script>
+<script>
+/* A3 — authoritative control gate. Only the host-badge holder may push program
+   changes (layout, audio, go-live, standby/logo hotkeys) to VDO, so multiple
+   crew consoles can't fight over the program. Publishing your OWN camera is
+   exempt (not a director action). If nobody holds the badge yet, the sole
+   operator is allowed. host.js exposes window.RawHost.state(). */
+window.rawCanControl = function(){
+  try{
+    var s = window.RawHost && window.RawHost.state && window.RawHost.state();
+    if(!s || !s.badge || !s.badge.hostId) return true;   // no host claimed → allow
+    return s.badge.hostId === s.clientId;                 // only the badge holder
+  }catch(e){ return true; }
+};
 </script>
 <script src="./desk.js" defer></script>
 <script src="./broadcast.js" defer></script>

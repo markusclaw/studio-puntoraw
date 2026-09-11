@@ -8,7 +8,9 @@
 
     /* ---- animated logo bug ---- */
     var logo=document.createElement('div'); logo.className='raw-logo-bug'; logo.hidden=true;
-    logo.innerHTML='<span class="rlb-dot"></span><span class="rlb-word"><span class="rlb-a">.RAW</span></span>';
+    logo.innerHTML='<span class="rlb-ep">03</span>'
+      +'<span class="rlb-title">.RAW</span>'
+      +'<span class="rlb-sub">master_sessions</span>';
     stage.appendChild(logo);
     var logoBtn=null;
     function toggleLogo(force){
@@ -78,6 +80,8 @@
       // Don't hijack Cmd+Enter / Cmd+Shift+. / Cmd+Shift+L while the user is
       // typing (transcript notes, name/code fields, the room password, etc.).
       if(typingIn(e.target)||typingIn(document.activeElement)) return;
+      // A3: only the host-badge holder drives go-live / standby / logo.
+      if(window.rawCanControl&&!window.rawCanControl()) return;
       // Cmd/Ctrl+Enter -> Go Live / End session
       if(e.key==='Enter'){ var p=document.querySelector('.raw-primary'); if(p){ e.preventDefault(); p.click(); } return; }
       // Cmd/Ctrl+Shift+.  -> emergency cut to standby (+tone)
