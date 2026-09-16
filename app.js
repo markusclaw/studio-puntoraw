@@ -146,18 +146,28 @@ function publishProgram(){
  programPending=true;
  window.RawHost.send({type:'program',revision:roomSnapshot.program.revision,program:draft});
 }
+const memberGoneSince={}; // streamID -> first time its member went missing (grace window)
 function receiveRoom(snapshot){
  const old=roomSnapshot;
  roomSnapshot=snapshot;
- if(old && old.program.revision===snapshot.program.revision && JSON.stringify(old.members.map(m=>[m.id,m.slot,m.streamID,m.admitted,m.ready]))===JSON.stringify(snapshot.members.map(m=>[m.id,m.slot,m.streamID,m.admitted,m.ready])))return;
+ const sig=x=>JSON.stringify(x.members.map(m=>[m.id,m.slot,m.streamID,m.admitted,m.ready]));
+ const membersChanged=!old||sig(old)!==sig(snapshot);
+ if(old && old.program.revision===snapshot.program.revision && !membersChanged)return;
  remoteRender=true;programPending=false;
  clearTimeout(state.saveTimer);
  const p=snapshot.program;
  state.scenes=clone(p.scenes);state.activeSceneId=p.activeSceneId;state.brand=clone(p.brand);
  state.lastAppliedSceneId=p.activeSceneId;
  state.placeholders=[{seat:'rj',name:'RJ',slot:1},{seat:'greg',name:'Greg',slot:2},{seat:'rafa',name:'Rafa',slot:3},...snapshot.members.filter(m=>m.role==='guest'&&m.admitted)].map(m=>({streamID:m.seat?'seat_'+m.seat:'guest_'+m.id,label:m.name,slot:m.slot,host:!!m.seat,placeholder:true}));
- for(const [id,src] of state.sources){const m=snapshot.members.find(m=>m.streamID===id&&(m.role==='crew'||m.admitted));if(!m){if(src.thumbnailUrl)URL.revokeObjectURL(src.thumbnailUrl);state.sources.delete(id);}else{src.label=m.name;src.slot=m.slot;}}
+ const nowTs=Date.now(), GRACE_MS=10000;
+ for(const [id,src] of state.sources){const m=snapshot.members.find(m=>m.streamID===id&&(m.role==='crew'||m.admitted));
+   if(m){delete memberGoneSince[id];src.label=m.name;src.slot=m.slot;}
+   else{ // brief presence blip: keep the card through a grace window (the VDO poll owns real disconnect/reconnect); only remove after a sustained absence (true leave/ghost)
+     if(!memberGoneSince[id])memberGoneSince[id]=nowTs;
+     if(nowTs-memberGoneSince[id]>GRACE_MS){if(src.thumbnailUrl)URL.revokeObjectURL(src.thumbnailUrl);state.sources.delete(id);delete memberGoneSince[id];}
+   }}
  renderAll();remoteRender=false;
+ if(membersChanged && typeof refreshState==='function'){try{refreshState();}catch(e){}} // show admits/joins now, not on the next ~1.4s poll
  window.dispatchEvent(new CustomEvent('raw-program-rendered',{detail:snapshot}));
 }
 window.addEventListener('raw-room-state',e=>receiveRoom(e.detail));

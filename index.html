@@ -388,9 +388,11 @@
 				c.width = Math.round((r.width || 0) / 2.5);
 				c.height = Math.round((r.height || 0) / 2.5);
 			}
-			function frame() {
+			var lastGrain = 0;
+			function frame(ts) {
 				const w = c && c.width, h = c && c.height;
-				if (ctx && w && h) {
+				if (ctx && w && h && (ts - lastGrain) >= 80) {
+					lastGrain = ts;
 					const img = ctx.createImageData(w, h);
 					const d = img.data;
 					for (let i = 0; i < d.length; i += 4) {

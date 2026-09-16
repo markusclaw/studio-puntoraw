@@ -24,16 +24,23 @@
      const member=snapshot.members.find(m=>m.slot===tile.slot&&(m.role==='crew'&&m.ready||m.role==='guest'&&m.admitted));
      tile.name.textContent=member?.name||(['RJ','Greg','Rafa'][box.slot])||box.label||'Guest';tile.name.hidden=!program.brand.labels;
      const streamID=member?.streamID||null;
-     if(tile.streamID!==streamID){
-       tile.frame?.remove();tile.frame=null;tile.streamID=streamID;
-       if(streamID){const q=new URLSearchParams({view:streamID,cleanoutput:'',autostart:'',speakermute:'',transparent:'',cover:box.cover===false?'0':'1'});if(p.get('password'))q.set('password',p.get('password'));
+     if(streamID){
+       if(tile.dropTimer){clearTimeout(tile.dropTimer);tile.dropTimer=null;}
+       if(tile.streamID!==streamID){
+         tile.frame?.remove();tile.frame=null;tile.streamID=streamID;
+         const q=new URLSearchParams({view:streamID,cleanoutput:'',autostart:'',speakermute:'',transparent:'',cover:box.cover===false?'0':'1'});if(p.get('password'))q.set('password',p.get('password'));
          const f=document.createElement('iframe');f.title=tile.name.textContent;f.allow='autoplay';f.src='https://vdo.ninja/?'+q;tile.frame=f;f.addEventListener('load',()=>volume(tile));tile.el.insertBefore(f,tile.name);
        }
+       tile.wait.textContent='CONNECTING MEDIA';
+     } else {
+       // presence blip: keep the live iframe through a short grace so a reconnecting host doesn't black out on air; same seat returns with the same streamID (seamless). Sustained absence tears it down.
+       if(tile.frame && !tile.dropTimer){
+         tile.dropTimer=setTimeout(()=>{tile.frame?.remove();tile.frame=null;tile.streamID=null;tile.dropTimer=null;tile.wait.textContent='WAITING FOR '+tile.name.textContent.toUpperCase();},6000);
+       } else if(!tile.frame){ tile.streamID=null;tile.wait.textContent='WAITING FOR '+tile.name.textContent.toUpperCase(); }
      }
-     tile.wait.textContent=streamID?'CONNECTING MEDIA':'WAITING FOR '+tile.name.textContent.toUpperCase();
      volume(tile);
    }
-   for(const [key,tile] of tiles)if(!keep.has(key)){tile.el.remove();tiles.delete(key);}
+   for(const [key,tile] of tiles)if(!keep.has(key)){if(tile.dropTimer)clearTimeout(tile.dropTimer);tile.el.remove();tiles.delete(key);}
    standby.hidden=!offline&&!program.standby;message.textContent=offline?'Studio connection interrupted':'Be right back';document.getElementById('logo').hidden=!program.logo;
  }
  client.addEventListener('state',e=>{snapshot=e.detail;offline=false;render();});
