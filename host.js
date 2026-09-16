@@ -394,6 +394,10 @@ function render() {
 	c.innerHTML = "";
 	if (!joined) return;
 
+	// RJ-gated control: while a controller is present, only RJ may take over.
+	const holderPresent = !!(runtime.badge.hostId && runtime.members.some(m => m.id === runtime.badge.hostId));
+	const iAmRj = !!(myMember() && myMember().seat === "rj");
+
 	// "You are <name>" + leave
 	const you = document.createElement("span");
 	you.className = "rh-you";
@@ -417,8 +421,15 @@ function render() {
 		const btn = document.createElement("button");
 		btn.type = "button";
 		btn.className = "rh-primary";
-		btn.textContent = "Take control";
-		btn.addEventListener("click", () => claimHost());
+		if (holderPresent && !iAmRj) {
+			// Someone else holds control and I'm not RJ — can't take it.
+			btn.textContent = nameOfId(runtime.badge.hostId) + " has control";
+			btn.disabled = true;
+			btn.title = "Only RJ can hand control over. Ask to have it passed.";
+		} else {
+			btn.textContent = "Take control";
+			btn.addEventListener("click", () => claimHost());
+		}
 		c.appendChild(btn);
 	}
 
@@ -434,7 +445,7 @@ function render() {
 		const msg = runtime.el.ribbon.querySelector(".rh-msg");
 		const take = runtime.el.ribbon.querySelector(".rh-take");
 		if (msg) msg.innerHTML = runtime.badge.hostId ? `<b>${escapeHtml(nameOfId(runtime.badge.hostId))}</b> has control` : `No host yet`;
-		if (take) take.style.display = role === "crew" ? "" : "none";
+		if (take) take.style.display = (role === "crew" && (!holderPresent || iAmRj)) ? "" : "none";
 	}
 
 	// Knocking tray — only crew can admit; hidden when nobody is waiting.

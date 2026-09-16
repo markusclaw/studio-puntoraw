@@ -443,8 +443,11 @@
 							line.className = 'transcript-line';
 							const ts = new Date().toLocaleTimeString('en-US', {hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit'});
 							line.innerHTML = '<span class="transcript-ts">' + ts + '</span> ' + t;
+							const nearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 60;
 							log.appendChild(line);
-							log.scrollTop = log.scrollHeight;
+							// Cap the log so a long show can't grow it without bound (freeze fix).
+							while (log.childElementCount > 200) log.removeChild(log.firstElementChild);
+							if (nearBottom) log.scrollTop = log.scrollHeight;
 						}
 					}
 				};

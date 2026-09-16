@@ -22,6 +22,7 @@ export class RawStudioRoom extends DurableObject {
     const members=this.members(exclude);
     const next=controller(members,this.badge.hostId);
     if(next!==this.badge.hostId) this.badge={hostId:next,term:this.badge.term+1,expiresAt:next?Date.now()+LEASE_MS:0};
+    else if(next) this.badge.expiresAt=Date.now()+LEASE_MS;   // keep the present holder's lease alive (server-side, every 5s) so tab throttling can't lock RJ out mid-show
     // Expired clients cannot retain a seat, authority, or program membership.
     for(const ws of this.ctx.getWebSockets()) {
       const a=ws.deserializeAttachment();
@@ -88,10 +89,15 @@ export class RawStudioRoom extends DurableObject {
       return;
     }
     const owns=a.role==='crew' && a.ready && this.badge.hostId===a.id && this.badge.term===m.term && this.badge.expiresAt>Date.now();
-    if(m.type==='leave') { ws.serializeAttachment({...a,closed:true}); if(a.role==='guest') delete this.guests[a.id]; if(a.seat) delete this.seats[a.seat]; await this.reconcile(); await this.persist(); this.broadcast(); try{ws.close(1000,'Left');}catch{} return; }
+    if(m.type==='leave') { ws.serializeAttachment({...a,closed:true}); if(a.role==='guest'){ delete this.guests[a.id]; delete this.program.mix[String(a.slot)]; } if(a.seat) delete this.seats[a.seat]; await this.reconcile(); await this.persist(); this.broadcast(); try{ws.close(1000,'Left');}catch{} return; }
     if(m.type==='ready') { a.ready=true; ws.serializeAttachment(a); }
     else if(m.type==='claim') {
       if(a.role!=='crew'||!a.ready) return this.error(ws,'forbidden','Only a host in the studio can take control.');
+      // RJ-gated: while a controller is live, only RJ may override it. A vacant
+      // badge (expired, or the holder has left) anyone ready may fill; the
+      // current holder may always refresh their own lease.
+      const live=this.badge.hostId && this.badge.expiresAt>Date.now() && this.members().some(x=>x.id===this.badge.hostId);
+      if(live && this.badge.hostId!==a.id && a.seat!=='rj') return this.error(ws,'forbidden','RJ holds control — ask to have it passed.');
       this.badge={hostId:a.id,term:this.badge.term+1,expiresAt:Date.now()+LEASE_MS};
     } else if(m.type==='pass') {
       if(!owns || !this.members().some(x=>x.id===m.target && x.role==='crew' && x.ready)) return this.error(ws,'forbidden','Invalid control transfer');
@@ -126,7 +132,7 @@ export class RawStudioRoom extends DurableObject {
     for(const ws of this.ctx.getWebSockets()) {const a=ws.deserializeAttachment();if(a?.pending && Date.now()-a.lastSeen>10000){try{ws.close(4002,'Join timeout');}catch{}}}
     await this.reconcile();
     const present=new Set(this.members().map(a=>a.id));
-    for(const [id,g] of Object.entries(this.guests)) { if(present.has(id)) g.seenAt=Date.now(); else if(Date.now()-g.seenAt>60000) delete this.guests[id]; }
+    for(const [id,g] of Object.entries(this.guests)) { if(present.has(id)) g.seenAt=Date.now(); else if(Date.now()-g.seenAt>60000){ delete this.guests[id]; delete this.program.mix[String(g.slot)]; } }
     await this.persist(); this.broadcast();
     if(!this.attachments().length) await this.ctx.storage.deleteAlarm();
   }
