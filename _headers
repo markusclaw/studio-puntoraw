@@ -1,0 +1,10 @@
+# Cloudflare Pages headers. Always revalidate HTML and the app's JS/CSS so a new
+# deploy takes effect immediately for every viewer (console, OBS, phones, guests)
+# instead of being masked by a stale browser cache. Revalidation is cheap: the
+# browser sends an ETag and gets a 304 when nothing changed.
+/*
+  Cache-Control: public, max-age=0, must-revalidate
+
+# Fonts/icons are fine to cache hard (their contents don't change under the same name).
+/lineawesome/*
+  Cache-Control: public, max-age=31536000, immutable
