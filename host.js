@@ -116,7 +116,8 @@ function passHostTo(targetId) {
 /* Host-only: let a knocking guest in, or turn them away (server mode). */
 function admitGuest(id) { if (amHost()) sendSocket({ type: "admit", target: id }); }
 function denyGuest(id)  { if (amHost()) sendSocket({ type: "deny",  target: id }); }
-function knockingGuests() { return runtime.members.filter(m => m.role === "guest" && !m.admitted); }
+function knockingGuests() { return runtime.members.filter(m => m.role === "guest" && !m.admitted && !m.denied); }   // audit 4.6: a denied guest is not "waiting"
+function admittedGuests() { return runtime.members.filter(m => m.role === "guest" && m.admitted); }
 
 /* Called from the join card. */
 function joinAs(name, code) {
@@ -462,20 +463,31 @@ function render() {
 	// Knocking tray — only crew can admit; hidden when nobody is waiting.
 	if (runtime.el.knock) {
 		const knockers = amHost() ? knockingGuests() : [];
-		runtime.el.knock.dataset.show = knockers.length ? "true" : "false";
+		const admitted = amHost() ? admittedGuests() : [];   // audit 4.6: admitted guests get a Remove
+		runtime.el.knock.dataset.show = (knockers.length || admitted.length) ? "true" : "false";
+		let khtml = "";
 		if (knockers.length) {
-			runtime.el.knock.innerHTML =
-				`<div class="kh">Greenroom<span class="n">${knockers.length} waiting</span></div>` +
+			khtml += `<div class="kh">Greenroom<span class="n">${knockers.length} waiting</span></div>` +
 				knockers.map(m =>
 					`<div class="krow"><span class="nm">${escapeHtml(m.name)}</span>` +
 					`<button class="admit" data-admit="${escapeHtml(m.id)}">Admit</button>` +
 					`<button class="deny" data-deny="${escapeHtml(m.id)}">Deny</button></div>`
 				).join("");
-			runtime.el.knock.querySelectorAll("[data-admit]").forEach(b =>
-				b.addEventListener("click", () => admitGuest(b.getAttribute("data-admit"))));
-			runtime.el.knock.querySelectorAll("[data-deny]").forEach(b =>
-				b.addEventListener("click", () => denyGuest(b.getAttribute("data-deny"))));
 		}
+		if (admitted.length) {
+			khtml += `<div class="kh">In studio<span class="n">${admitted.length}</span></div>` +
+				admitted.map(m =>
+					`<div class="krow"><span class="nm">${escapeHtml(m.name)}</span>` +
+					`<button class="deny" data-remove="${escapeHtml(m.id)}">Remove</button></div>`
+				).join("");
+		}
+		runtime.el.knock.innerHTML = khtml;
+		runtime.el.knock.querySelectorAll("[data-admit]").forEach(b =>
+			b.addEventListener("click", () => admitGuest(b.getAttribute("data-admit"))));
+		runtime.el.knock.querySelectorAll("[data-deny]").forEach(b =>
+			b.addEventListener("click", () => denyGuest(b.getAttribute("data-deny"))));
+		runtime.el.knock.querySelectorAll("[data-remove]").forEach(b =>
+			b.addEventListener("click", () => { if (confirm("Remove this guest from the studio?")) denyGuest(b.getAttribute("data-remove")); }));
 	}
 }
 

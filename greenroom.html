@@ -275,9 +275,15 @@ function enter(){
     if(CREW)return;
     const me=e.detail.members.find(m=>m.id===session.id);
     if(me?.admitted){startCamera(me);els.statusT.textContent="You're in the studio";els.statusS.textContent='You can talk with the hosts. The controller selects when you appear in the program.';els.pip.className='pip live';}
+    else if(me?.denied){stopPublisher();els.statusT.textContent='Not admitted';els.statusS.textContent='The host didn’t admit you to this session. Check with them if you think this is a mistake.';els.pip.className='pip wait';}   // audit 4.6: denied is not the same as still-waiting
     else {stopPublisher();els.statusT.textContent='Waiting for admission';els.statusS.textContent='Your camera and microphone are not being sent to the studio.';els.pip.className='pip wait';}
   });
-  client.addEventListener('offline',()=>{els.statusT.textContent='Reconnecting…';els.statusS.textContent='Camera stays live; reconnecting to the room…';});   // audit 1.2: keep the guest camera publishing across a control-channel blip; it is torn down only on fatal or when leaving
+  // audit 4.6: if the room service is unreachable BEFORE we ever joined, the Enter button was left
+  // stuck disabled. Reset it and say so. Once joined, keep the camera alive across a blip (audit 1.2).
+  client.addEventListener('offline',()=>{
+    if(!client.joined){ els.enterBtn.disabled=false; confirmed=false; els.preflight.classList.remove('hidden'); id('pfHint').textContent='Room service unreachable — check your connection and try again.'; return; }
+    els.statusT.textContent='Reconnecting…';els.statusS.textContent='Camera stays live; reconnecting to the room…';
+  });
   client.addEventListener('fatal',e=>{stopPublisher();confirmed=false;els.enterBtn.disabled=false;els.preflight.classList.remove('hidden');id('pfHint').textContent=e.detail;});
   client.connect();
 }
