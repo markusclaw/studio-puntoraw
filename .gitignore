@@ -1,2 +1,14 @@
-__v4probe.txt
-.git/_stale/
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Linux / FUSE mount artifacts (from the bridged working tree)
+.fuse_hidden*
+
+# Session scratch
+Claude outputs/
+
+# Dependencies / build
+node_modules/
+**/node_modules/
+.wrangler/

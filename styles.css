@@ -2503,3 +2503,67 @@ body[data-transcript="on"] .raw-tr-live{display:inline-block}
 body:not([data-raw-self="host"]) #stage-overlay { pointer-events:none; }
 body:not([data-raw-self="host"]) .raw-quickbar { pointer-events:none; opacity:.5; }
 .raw-seat-assign,.raw-seat-del { display:none !important; }
+
+/* ============================================================
+   MOBILE PARTICIPANT VIEW — stage-first reflow (≤900px).
+   The console stacks in DOM order (MARKUS/transcript → stage →
+   crew), which buries the live stage. On a phone the stage is the
+   whole point, so reflow to: sticky topbar → STAGE (hero) →
+   program controls → crew → transcript, and tuck the director-only
+   tools (presets, mixer, inspector) below. CSS-only; desktop is
+   untouched (all rules are inside the phone media queries).
+   ============================================================ */
+@media (max-width:900px){
+  /* Flex column lets us reorder the four workspace regions freely. */
+  .studio-workspace{ display:flex!important; flex-direction:column; gap:0; }
+  .studio-workspace > .topbar{ order:0; position:sticky; top:0; z-index:40;
+    background:var(--panel,#131211); border-bottom:1px solid var(--line); }
+  .studio-workspace > .program-panel{ order:1; }
+  .studio-workspace > .control-panel{ order:2; }
+  .studio-workspace > .scenes-panel{ order:3; }
+
+  /* Program panel: the stage leads, every control sits beneath it. */
+  .program-panel{ display:flex!important; flex-direction:column; gap:10px; padding:10px; min-height:0; }
+  .program-panel .stage-shell{ order:0; padding:0; }
+  .program-panel .program-toolbar{ order:1; }
+  .program-panel .raw-desk{ order:2; }
+  .program-panel .layout-strip{ order:3; }
+  .program-panel .box-inspector{ order:4; }
+
+  /* Full-bleed 16:9 stage, pinned high, never shrinks. */
+  .program-panel .stage-aspect{ width:100%!important; height:auto!important;
+    max-width:100%!important; max-height:none!important; aspect-ratio:16/9; margin:0!important; }
+
+  /* Program controls: ONE clean swipeable row, not a wrapped 2D wall. The row and
+     both injected sub-groups (.raw-modes, .raw-bcast) go nowrap and scroll together. */
+  .program-toolbar{ flex-wrap:nowrap; row-gap:0; padding:0; }
+  .program-toolbar__label{ display:none; }
+  .program-toolbar__actions{ flex-wrap:nowrap!important; justify-content:flex-start; gap:6px;
+    overflow-x:auto; -webkit-overflow-scrolling:touch; width:100%; padding-bottom:4px; scrollbar-width:none; }
+  .program-toolbar__actions::-webkit-scrollbar{ display:none; }
+  .program-toolbar__actions .raw-modes,
+  .program-toolbar__actions .raw-bcast{ flex:0 0 auto; flex-wrap:nowrap!important; gap:6px; }
+  .program-toolbar__actions .button{ flex:0 0 auto!important; white-space:nowrap; width:auto!important; }
+
+  /* Stray sidebar collapse handles are meaningless once panels stack full-width. */
+  .raw-collapse, .raw-rail, .raw-rail__btn, .raw-rail__label{ display:none!important; }
+
+  /* Presets + mixer: kept, but condensed and clearly secondary. */
+  .layout-strip{ grid-template-columns:none!important; display:flex; flex-wrap:nowrap;
+    overflow-x:auto; -webkit-overflow-scrolling:touch; gap:6px; }
+  .raw-desk__rack{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+
+  /* Secondary regions: quiet dividers, condensed transcript so it never dominates. */
+  .scenes-panel, .control-panel{ border-top:1px solid var(--line); }
+  .transcript-log{ max-height:160px; }
+}
+
+/* Phone-tight: reclaim vertical space so the stage owns the first screen. */
+@media (max-width:600px){
+  .studio-workspace > .topbar{ padding:8px 12px; }
+  .program-panel{ padding:8px; gap:8px; }
+  .transcript-log{ max-height:120px; }
+  /* A non-director joining on a phone doesn't need the mixer (already disabled for
+     them) eating a whole screen above the crew — collapse it away. Hosts keep it. */
+  body:not([data-raw-self="host"]) .raw-desk{ max-height:0; overflow:hidden; padding:0; margin:0; border:0; }
+}
