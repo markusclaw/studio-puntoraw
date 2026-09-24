@@ -19,9 +19,10 @@
  // Build (or rebuild) the VDO view iframe for a tile. The combo that works is
  // `room` + `view=ID` + `solo=1`: a bare view=ID renders black (stream IDs are salted by the
  // room), and `room`+`view` WITHOUT a join mode makes VDO.Ninja show its "Join Room" chooser
- // (hidden by cleanoutput → black). solo=1 views that one stream cleanly. NOTE: `scene:''`
- // does NOT work here — URLSearchParams serializes it to an empty `scene=`, which VDO can't
- // parse and falls back to the chooser; solo=1 has an unambiguous value. Verified live.
+ // (hidden by cleanoutput → black). solo=1 (VDO's own "solo link" form) views that one stream
+ // cleanly. `scene` (even as an empty `scene=`) also works — both were verified live side by
+ // side on 2026-09-24; the chooser seen with `scene=` came from a stale cached program.js that
+ // had neither flag. solo=1 is kept because it is the documented single-guest form.
  // Rebuilding is also how a frozen/stale connection is recovered, since the streamID never changes.
  function mountView(tile,box,streamID){
    tile.frame?.remove();
