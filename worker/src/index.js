@@ -1,34 +1,70 @@
 import { DurableObject } from 'cloudflare:workers';
 import { HOSTS, LEASE_MS, PRESENCE_MS, initialProgram, sanitizeProgram, controller } from './model.js';
 
+const ALARM_MS = 10000; // reconcile/presence cadence. Presence 30s, lease 20s tolerate this; 10s ~halves alarm-driven DO requests vs 5s.
+
 // One room owns seats, media identities, program and controller authority.
 export class RawStudioRoom extends DurableObject {
   constructor(ctx, env) {
     super(ctx,env); this.env=env; this.program=initialProgram(); this.badge={hostId:null,term:0,expiresAt:0};
     this.guests={}; this.seats={};
+    this._saved={}; // JSON of last-written value per key, for change detection in persist()
     ctx.blockConcurrencyWhile(async()=>{
       this.program=await ctx.storage.get('program-v2') || initialProgram();
-      this.badge=await ctx.storage.get('badge-v2') || this.badge;
-      this.guests=await ctx.storage.get('guests-v2') || {};
-      this.seats=await ctx.storage.get('seats-v2') || {};
+      // Persisted badge/guests/seats carry only durable fields; rolling fields
+      // (lease expiry, presence timestamps) are rebuilt here so they never drive writes.
+      const b=await ctx.storage.get('badge-v2'); this.badge=b?{hostId:b.hostId,term:b.term||0,expiresAt:0}:this.badge;
+      this.guests=await ctx.storage.get('guests-v2') || {}; for(const g of Object.values(this.guests)) g.seenAt=Date.now();
+      this.seats=await ctx.storage.get('seats-v2') || {}; for(const s of Object.values(this.seats)) s.until=Date.now()+PRESENCE_MS;
+      // Prime the change-cache from what we just loaded so the first persist after a
+      // wake-up writes nothing unless state has actually diverged from storage.
+      for(const [k,v] of Object.entries(this._normalized())) this._saved[k]=JSON.stringify(v);
     });
   }
   attachments(exclude) { return this.ctx.getWebSockets().filter(w=>w!==exclude).map(w=>({ws:w,...w.deserializeAttachment()})).filter(a=>a.id && !a.closed && Date.now()-a.lastSeen<PRESENCE_MS); }
   members(exclude) {
     return this.attachments(exclude).filter(a=>a.role!=='viewer').map(({ws,token,...a})=>({...a, admitted:a.role==='crew'||!!this.guests[a.id]?.admitted}));
   }
-  async persist() { await this.ctx.storage.put({'program-v2':this.program,'badge-v2':this.badge,'guests-v2':this.guests,'seats-v2':this.seats}); }
+  // Durable projection of room state: only fields that must survive a restart. Roll-only
+  // fields (badge.expiresAt, guest.seenAt, seat.until) are omitted so they never drive writes.
+  _normalized() {
+    return {
+      'program-v2':this.program,
+      'badge-v2':{hostId:this.badge.hostId,term:this.badge.term},
+      'guests-v2':Object.fromEntries(Object.entries(this.guests).map(([k,g])=>[k,{token:g.token,slot:g.slot,streamID:g.streamID,admitted:!!g.admitted}])),
+      'seats-v2':Object.fromEntries(Object.entries(this.seats).map(([k,s])=>[k,{id:s.id,token:s.token,streamID:s.streamID}]))
+    };
+  }
+  async persist() {
+    // Write only keys whose durable content changed, so a steady-state room's alarm writes
+    // zero rows — the fix for the 126k SQL-row DO burn. _saved is updated ONLY after the put
+    // succeeds, so a transient write error just leaves the key dirty for the next persist
+    // (no silent data loss) and never throws up into a handler or the alarm.
+    const norm=this._normalized(), put={}, dirty=[];
+    for(const k in norm){ const s=JSON.stringify(norm[k]); if(this._saved[k]!==s){ put[k]=norm[k]; dirty.push([k,s]); } }
+    if(!dirty.length) return;
+    try { await this.ctx.storage.put(put); for(const [k,s] of dirty) this._saved[k]=s; }
+    catch(e){ console.warn('persist failed, will retry next cycle',e); }
+  }
   async reconcile(exclude) {
     const members=this.members(exclude);
-    const next=controller(members,this.badge.hostId);
+    // Succession by lease (audit 1.4): if the holder's socket blipped (absent from members)
+    // but their lease is still valid and they didn't send `leave`, KEEP the badge so a
+    // refresh/reconnect returns to control instead of it jumping to RJ. Reassign only once
+    // the lease lapses. An explicit `leave` vacates the badge (below) so succession is instant.
+    const holderPresent = !!this.badge.hostId && members.some(m=>m.id===this.badge.hostId);
+    let next;
+    if(holderPresent) next=controller(members,this.badge.hostId);
+    else if(this.badge.hostId && this.badge.expiresAt>Date.now()) next=this.badge.hostId;
+    else next=controller(members,null);
     if(next!==this.badge.hostId) this.badge={hostId:next,term:this.badge.term+1,expiresAt:next?Date.now()+LEASE_MS:0};
-    else if(next) this.badge.expiresAt=Date.now()+LEASE_MS;   // keep the present holder's lease alive (server-side, every 5s) so tab throttling can't lock RJ out mid-show
+    else if(next && holderPresent) this.badge.expiresAt=Date.now()+LEASE_MS;   // refresh the lease only while the holder is actually present, so a blip counts down and eventually reassigns
     // Expired clients cannot retain a seat, authority, or program membership.
     for(const ws of this.ctx.getWebSockets()) {
       const a=ws.deserializeAttachment();
       if(a && !a.closed && Date.now()-a.lastSeen>=PRESENCE_MS) { ws.serializeAttachment({...a,closed:true}); try{ws.close(4000,'Presence expired');}catch{} }
     }
-    await this.ctx.storage.setAlarm(Date.now()+5000);
+    await this.ctx.storage.setAlarm(Date.now()+ALARM_MS);
   }
   stateMsg() {
     return {type:'state',protocol:2,badge:this.badge,members:this.members(),program:this.program,serverTime:Date.now()};
@@ -44,21 +80,22 @@ export class RawStudioRoom extends DurableObject {
     // Authenticate in the first message: no codes/tokens in URLs or access logs.
     ws.serializeAttachment({pending:true,lastSeen:Date.now()});
     this.send(ws,{type:'hello',protocol:2});
-    await this.ctx.storage.setAlarm(Date.now()+5000);
+    await this.ctx.storage.setAlarm(Date.now()+ALARM_MS);
     return new Response(null,{status:101,webSocket:pair[0]});
   }
   async join(ws,m) {
     if(!/^[a-zA-Z0-9_-]{8,80}$/.test(m.id||'') || !/^[a-zA-Z0-9_-]{16,100}$/.test(m.token||'')) return this.error(ws,'identity','Invalid session identity');
-    const host=HOSTS.find(h=>h.seat===m.seat);
+    if(m.viewer && m.seat) return this.error(ws,'seat','Viewers cannot claim seats');   // audit 1.8: a viewer must never resolve to a host seat
+    const host=m.viewer?null:HOSTS.find(h=>h.seat===m.seat);
     let role=m.viewer?'viewer':host?'crew':'guest';
-    if(m.seat && !host) return this.error(ws,'seat','Unknown host seat');
+    if(m.seat && !m.viewer && !host) return this.error(ws,'seat','Unknown host seat');
     if(role==='crew' && (!this.env.CREW_CODE || m.code!==this.env.CREW_CODE)) return this.error(ws,'auth','Enter the private host code to reserve this seat.');
     await this.reconcile();
     const existing=this.attachments(ws).find(a=>a.id===m.id);
     const reservation=host && this.seats[host.seat];
     if(reservation && reservation.until>Date.now() && (reservation.id!==m.id || reservation.token!==m.token)) return this.error(ws,'occupied',host.name+' is already reserved. Leave on the other device or wait 30 seconds after disconnecting.');
     if(existing && (existing.token!==m.token || existing.seat!==(host?.seat||'') || existing.role!==role)) return this.error(ws,'identity','Session identity is already in use');
-    if(host && this.attachments(ws).some(a=>a.seat===host.seat && a.id!==m.id)) return this.error(ws,'occupied',host.name+' is already connected. Leave on the other device before switching.');
+    if(host && this.attachments(ws).some(a=>a.seat===host.seat && a.role==='crew' && a.id!==m.id)) return this.error(ws,'occupied',host.name+' is already connected. Leave on the other device before switching.');
     if(role==='guest' && !existing && this.members().filter(a=>a.role==='guest').length>=16) return this.error(ws,'full','The guest room is full.');
     let saved=role==='guest'?this.guests[m.id]:null;
     if(saved && saved.token!==m.token) return this.error(ws,'identity','Invalid guest session');
@@ -89,7 +126,7 @@ export class RawStudioRoom extends DurableObject {
       return;
     }
     const owns=a.role==='crew' && a.ready && this.badge.hostId===a.id && this.badge.term===m.term && this.badge.expiresAt>Date.now();
-    if(m.type==='leave') { ws.serializeAttachment({...a,closed:true}); if(a.role==='guest'){ delete this.guests[a.id]; delete this.program.mix[String(a.slot)]; } if(a.seat) delete this.seats[a.seat]; await this.reconcile(); await this.persist(); this.broadcast(); try{ws.close(1000,'Left');}catch{} return; }
+    if(m.type==='leave') { ws.serializeAttachment({...a,closed:true}); if(this.badge.hostId===a.id) this.badge={hostId:null,term:this.badge.term+1,expiresAt:0}; if(a.role==='guest'){ delete this.guests[a.id]; delete this.program.mix[String(a.slot)]; } if(a.seat) delete this.seats[a.seat]; await this.reconcile(); await this.persist(); this.broadcast(); try{ws.close(1000,'Left');}catch{} return; }
     if(m.type==='ready') { a.ready=true; ws.serializeAttachment(a); }
     else if(m.type==='claim') {
       if(a.role!=='crew'||!a.ready) return this.error(ws,'forbidden','Only a host in the studio can take control.');
@@ -129,12 +166,20 @@ export class RawStudioRoom extends DurableObject {
   async webSocketClose(ws) { const a=ws.deserializeAttachment(); if(a) ws.serializeAttachment({...a,closed:true}); await this.reconcile(); await this.persist(); this.broadcast(); }
   async webSocketError(ws) { await this.webSocketClose(ws); }
   async alarm() {
-    for(const ws of this.ctx.getWebSockets()) {const a=ws.deserializeAttachment();if(a?.pending && Date.now()-a.lastSeen>10000){try{ws.close(4002,'Join timeout');}catch{}}}
-    await this.reconcile();
-    const present=new Set(this.members().map(a=>a.id));
-    for(const [id,g] of Object.entries(this.guests)) { if(present.has(id)) g.seenAt=Date.now(); else if(Date.now()-g.seenAt>60000){ delete this.guests[id]; delete this.program.mix[String(g.slot)]; } }
-    await this.persist(); this.broadcast();
-    if(!this.attachments().length) await this.ctx.storage.deleteAlarm();
+    try {
+      for(const ws of this.ctx.getWebSockets()) {const a=ws.deserializeAttachment();if(a?.pending && Date.now()-a.lastSeen>10000){try{ws.close(4002,'Join timeout');}catch{}}}
+      await this.reconcile();
+      const present=new Set(this.members().map(a=>a.id));
+      for(const [id,g] of Object.entries(this.guests)) { if(present.has(id)) g.seenAt=Date.now(); else if(Date.now()-g.seenAt>60000){ delete this.guests[id]; delete this.program.mix[String(g.slot)]; } }
+      await this.persist(); this.broadcast();
+    } catch(e){ console.warn('alarm error',e); }
+    // Reschedule while ANY socket is still open — including not-yet-joined pending sockets, so
+    // their join-timeout still fires. Runs even if the body threw, so a transient error can't
+    // strand the room or trip Cloudflare's alarm-retry backoff (extra billed invocations).
+    try {
+      const live=this.ctx.getWebSockets().some(w=>!w.deserializeAttachment()?.closed);
+      if(live) await this.ctx.storage.setAlarm(Date.now()+ALARM_MS); else await this.ctx.storage.deleteAlarm();
+    } catch{}
   }
 }
 export default { async fetch(request,env) {

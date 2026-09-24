@@ -18,7 +18,7 @@
       ws.addEventListener('message',e=>{
         if(ws!==this.socket)return;let m;try{m=JSON.parse(e.data);}catch{return;}
         if(m.type==='hello') {if(m.protocol!==2)return this.fail('Studio needs the matching room-service update.');ws.send(JSON.stringify({type:'join',...this.identity}));}
-        else if(m.type==='joined'){this.joined=true;this.member=m.member;this.delay=500;clearTimeout(timeout);this.emit('joined',m.member);this.ping();clearInterval(this.timer);this.timer=setInterval(()=>this.ping(),5000);}
+        else if(m.type==='joined'){this.joined=true;this.member=m.member;this.delay=500;this.lastPong=0;clearTimeout(timeout);this.emit('joined',m.member);this.ping();clearInterval(this.timer);this.timer=setInterval(()=>this.ping(),5000);}
         else if(m.type==='state'){
           if(m.protocol!==2)return this.fail('Studio needs the matching room-service update.');
           this.snapshot=m;this.leaseUntil=Date.now()+Math.max(0,(m.badge.expiresAt||0)-m.serverTime);this.emit('state',m);
@@ -26,7 +26,7 @@
         else if(m.type==='replaced')this.fail('This seat was opened in another tab. This tab has stopped publishing.');
         else if(m.type==='error'){if(!this.joined)this.fail(m.message);else this.emit('error',m);}
       });
-      ws.addEventListener('close',()=>{clearTimeout(timeout);if(ws!==this.socket)return;this.joined=false;this.leaseUntil=0;clearInterval(this.timer);this.emit('offline');if(!this.stopped){this.retry=setTimeout(()=>this.connect(),this.delay);this.delay=Math.min(this.delay*2,8000);}});
+      ws.addEventListener('close',()=>{clearTimeout(timeout);if(ws!==this.socket)return;this.joined=false;this.leaseUntil=0;this.lastPong=0;clearInterval(this.timer);this.emit('offline');if(!this.stopped){this.retry=setTimeout(()=>this.connect(),this.delay);this.delay=Math.min(this.delay*2,8000);}});
       ws.addEventListener('error',()=>ws.close());
     }
     ping(){if(this.lastPong && Date.now()-this.lastPong>15000){this.lastPong=0;this.socket?.close();return;}this.send({type:'ping'});if(!this.lastPong)this.lastPong=Date.now();}
