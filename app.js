@@ -336,7 +336,12 @@ function appendParams(url, extra) {
 function buildDirectorUrl() {
 	const url = new URL("https://vdo.ninja/index.html");
 	const extra = currentExtraParams();
-	url.searchParams.set("ltb", extra.has("ltb") ? extra.get("ltb") : "1500");
+	// audit 2.2: the director iframe receives EVERY host's video only to feed the small crew-card
+	// thumbnails + loudness — it never needs full res. Cap what it pulls hard (ltb = total inbound
+	// across all streams; scale/videobitrate = per-stream) so it stops being the console's lag
+	// source. Receive-side only — publishers and the stage preview (program.html tiles) are untouched.
+	url.searchParams.set("ltb", extra.has("ltb") ? extra.get("ltb") : "600");
+	if (!extra.has("videobitrate")) url.searchParams.set("videobitrate", "500");
 	url.searchParams.set("nocontrolbarspace", "");
 	url.searchParams.set("transparent", "");
 	url.searchParams.set("cleanoutput", "");
