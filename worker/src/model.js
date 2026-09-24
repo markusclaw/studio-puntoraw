@@ -25,3 +25,23 @@ export function controller(members, currentId) {
   if (crew.some(m=>m.id===currentId)) return currentId;
   return crew.sort((a,b)=>(a.seat==='rj'?-1:b.seat==='rj'?1:0) || a.joinedAt-b.joinedAt)[0]?.id || null;
 }
+
+// audit 1.4: badge succession. While the holder's socket is merely blipping (absent from
+// `members`) but their lease is still valid, KEEP the badge so a refresh/reconnect returns them to
+// control instead of it jumping to RJ. Reassign only once the holder is present again (normal
+// controller() rules) or the lease has lapsed. Pure so it is unit-tested directly.
+export function nextBadgeHolder(members, badge, now) {
+  const holderPresent = !!badge.hostId && members.some(m=>m.id===badge.hostId);
+  if (holderPresent) return controller(members, badge.hostId);
+  if (badge.hostId && badge.expiresAt > now) return badge.hostId;
+  return controller(members, null);
+}
+
+// audit 1.8: resolve a join request's role from its seat claim, rejecting a viewer that tries to
+// claim a host seat BEFORE any seat reservation is touched. Returns {error} or {role, host}.
+export function resolveJoinRole(m, hosts) {
+  if (m.viewer && m.seat) return { error: 'viewer-seat' };            // a viewer must never resolve to a host seat
+  const host = m.viewer ? null : hosts.find(h=>h.seat===m.seat) || null;
+  if (m.seat && !m.viewer && !host) return { error: 'unknown-seat' };
+  return { role: m.viewer ? 'viewer' : host ? 'crew' : 'guest', host };
+}

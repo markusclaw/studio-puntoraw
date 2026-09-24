@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { HOSTS, initialProgram, sanitizeProgram, controller } from '../src/model.js';
+import { HOSTS, initialProgram, sanitizeProgram, controller, nextBadgeHolder, resolveJoinRole } from '../src/model.js';
 
 const crew = (id, seat, joinedAt, ready = true) => ({ id, role: 'crew', ready, seat, joinedAt });
 
@@ -84,6 +84,51 @@ function channelsFrom(members) {
     { slot: 'master', name: 'MASTER' }
   ];
 }
+
+// audit 1.4 — badge succession keeps a blipping holder in control while their lease is valid.
+test('nextBadgeHolder: present holder keeps control (does not jump to RJ)', () => {
+  const members = [crew('g', 'greg', 100), crew('r', 'rj', 200)];
+  const badge = { hostId: 'g', term: 1, expiresAt: 10_000 };
+  assert.equal(nextBadgeHolder(members, badge, 5_000), 'g'); // Greg present + RJ present → Greg keeps it
+});
+
+test('nextBadgeHolder: holder blipped but lease still valid → KEEPS the badge (audit 1.4)', () => {
+  const members = [crew('r', 'rj', 200)];                    // Greg (holder) momentarily absent
+  const badge = { hostId: 'g', term: 1, expiresAt: 10_000 };
+  assert.equal(nextBadgeHolder(members, badge, 5_000), 'g'); // lease not lapsed → do NOT hand control to RJ
+});
+
+test('nextBadgeHolder: holder gone AND lease lapsed → succession runs', () => {
+  const members = [crew('r', 'rj', 200), crew('f', 'rafa', 50)];
+  const badge = { hostId: 'g', term: 1, expiresAt: 10_000 };
+  assert.equal(nextBadgeHolder(members, badge, 20_000), 'r'); // lapsed → controller() picks RJ (preferred at setup)
+});
+
+test('nextBadgeHolder: vacant badge picks by controller() rules', () => {
+  const members = [crew('f', 'rafa', 50), crew('g', 'greg', 100)];
+  const badge = { hostId: null, term: 0, expiresAt: 0 };
+  assert.equal(nextBadgeHolder(members, badge, 1_000), 'f'); // earliest join, no RJ present
+});
+
+// audit 1.8 — a viewer can never resolve to a host seat.
+test('resolveJoinRole: a viewer claiming a seat is rejected (audit 1.8)', () => {
+  assert.deepEqual(resolveJoinRole({ viewer: true, seat: 'rj' }, HOSTS), { error: 'viewer-seat' });
+});
+
+test('resolveJoinRole: a plain viewer resolves to the viewer role', () => {
+  assert.deepEqual(resolveJoinRole({ viewer: true, seat: '' }, HOSTS), { role: 'viewer', host: null });
+});
+
+test('resolveJoinRole: a valid host seat resolves to crew', () => {
+  const r = resolveJoinRole({ seat: 'greg' }, HOSTS);
+  assert.equal(r.role, 'crew');
+  assert.equal(r.host.seat, 'greg');
+});
+
+test('resolveJoinRole: an unknown seat is rejected; no seat is a guest', () => {
+  assert.deepEqual(resolveJoinRole({ seat: 'nope' }, HOSTS), { error: 'unknown-seat' });
+  assert.deepEqual(resolveJoinRole({ seat: '' }, HOSTS), { role: 'guest', host: null });
+});
 
 test('mixer: exactly 3 host channels + admitted guests + master, no label-driven duplicates', () => {
   const members = [

@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
-import { HOSTS, LEASE_MS, PRESENCE_MS, initialProgram, sanitizeProgram, controller } from './model.js';
+import { HOSTS, LEASE_MS, PRESENCE_MS, initialProgram, sanitizeProgram, controller, nextBadgeHolder, resolveJoinRole } from './model.js';
 
 const ALARM_MS = 10000; // reconcile/presence cadence. Presence 30s, lease 20s tolerate this; 10s ~halves alarm-driven DO requests vs 5s.
 
@@ -52,19 +52,21 @@ export class RawStudioRoom extends DurableObject {
     // but their lease is still valid and they didn't send `leave`, KEEP the badge so a
     // refresh/reconnect returns to control instead of it jumping to RJ. Reassign only once
     // the lease lapses. An explicit `leave` vacates the badge (below) so succession is instant.
+    const prevHost=this.badge.hostId;
     const holderPresent = !!this.badge.hostId && members.some(m=>m.id===this.badge.hostId);
-    let next;
-    if(holderPresent) next=controller(members,this.badge.hostId);
-    else if(this.badge.hostId && this.badge.expiresAt>Date.now()) next=this.badge.hostId;
-    else next=controller(members,null);
+    const next = nextBadgeHolder(members, this.badge, Date.now());   // audit 1.4 (extracted to model.js, unit-tested)
     if(next!==this.badge.hostId) this.badge={hostId:next,term:this.badge.term+1,expiresAt:next?Date.now()+LEASE_MS:0};
     else if(next && holderPresent) this.badge.expiresAt=Date.now()+LEASE_MS;   // refresh the lease only while the holder is actually present, so a blip counts down and eventually reassigns
+    // audit 2.8: report whether reconcile changed anything observable (badge holder, or a socket
+    // closed for presence expiry) so the alarm only broadcasts when there's something to send.
+    let changed = this.badge.hostId!==prevHost;
     // Expired clients cannot retain a seat, authority, or program membership.
     for(const ws of this.ctx.getWebSockets()) {
       const a=ws.deserializeAttachment();
-      if(a && !a.closed && Date.now()-a.lastSeen>=PRESENCE_MS) { ws.serializeAttachment({...a,closed:true}); try{ws.close(4000,'Presence expired');}catch{} }
+      if(a && !a.closed && Date.now()-a.lastSeen>=PRESENCE_MS) { ws.serializeAttachment({...a,closed:true}); try{ws.close(4000,'Presence expired');}catch{} changed=true; }
     }
     await this.ctx.storage.setAlarm(Date.now()+ALARM_MS);
+    return changed;
   }
   stateMsg() {
     return {type:'state',protocol:2,badge:this.badge,members:this.members(),program:this.program,serverTime:Date.now()};
@@ -85,10 +87,10 @@ export class RawStudioRoom extends DurableObject {
   }
   async join(ws,m) {
     if(!/^[a-zA-Z0-9_-]{8,80}$/.test(m.id||'') || !/^[a-zA-Z0-9_-]{16,100}$/.test(m.token||'')) return this.error(ws,'identity','Invalid session identity');
-    if(m.viewer && m.seat) return this.error(ws,'seat','Viewers cannot claim seats');   // audit 1.8: a viewer must never resolve to a host seat
-    const host=m.viewer?null:HOSTS.find(h=>h.seat===m.seat);
-    let role=m.viewer?'viewer':host?'crew':'guest';
-    if(m.seat && !m.viewer && !host) return this.error(ws,'seat','Unknown host seat');
+    const rr=resolveJoinRole(m,HOSTS);   // audit 1.8 (extracted to model.js, unit-tested)
+    if(rr.error==='viewer-seat') return this.error(ws,'seat','Viewers cannot claim seats');
+    if(rr.error==='unknown-seat') return this.error(ws,'seat','Unknown host seat');
+    const host=rr.host, role=rr.role;
     if(role==='crew' && (!this.env.CREW_CODE || m.code!==this.env.CREW_CODE)) return this.error(ws,'auth','Enter the private host code to reserve this seat.');
     await this.reconcile();
     const existing=this.attachments(ws).find(a=>a.id===m.id);
@@ -140,7 +142,7 @@ export class RawStudioRoom extends DurableObject {
       if(!owns || !this.members().some(x=>x.id===m.target && x.role==='crew' && x.ready)) return this.error(ws,'forbidden','Invalid control transfer');
       this.badge={hostId:m.target,term:this.badge.term+1,expiresAt:Date.now()+LEASE_MS};
     } else if(m.type==='admit'||m.type==='deny') {
-      if(!owns || !this.guests[m.target]) return this.error(ws,'forbidden','Only the controller can admit or remove a guest.');
+      if(!owns || !Object.hasOwn(this.guests,m.target)) return this.error(ws,'forbidden','Only the controller can admit or remove a guest.');   // audit 3.3: own-property check so a target like "__proto__" can't resolve to an inherited value
       this.guests[m.target].admitted=m.type==='admit';
     } else if(m.type==='program') {
       if(!owns) return this.error(ws,'forbidden','Control changed. Your change was not applied.');
@@ -168,10 +170,10 @@ export class RawStudioRoom extends DurableObject {
   async alarm() {
     try {
       for(const ws of this.ctx.getWebSockets()) {const a=ws.deserializeAttachment();if(a?.pending && Date.now()-a.lastSeen>10000){try{ws.close(4002,'Join timeout');}catch{}}}
-      await this.reconcile();
+      let changed=await this.reconcile();
       const present=new Set(this.members().map(a=>a.id));
-      for(const [id,g] of Object.entries(this.guests)) { if(present.has(id)) g.seenAt=Date.now(); else if(Date.now()-g.seenAt>60000){ delete this.guests[id]; delete this.program.mix[String(g.slot)]; } }
-      await this.persist(); this.broadcast();
+      for(const [id,g] of Object.entries(this.guests)) { if(present.has(id)) g.seenAt=Date.now(); else if(Date.now()-g.seenAt>60000){ delete this.guests[id]; delete this.program.mix[String(g.slot)]; changed=true; } }
+      await this.persist(); if(changed) this.broadcast();   // audit 2.8: a steady-state alarm cycle no longer broadcasts to every socket
     } catch(e){ console.warn('alarm error',e); }
     // Reschedule while ANY socket is still open — including not-yet-joined pending sockets, so
     // their join-timeout still fires. Runs even if the body threw, so a transient error can't
