@@ -517,6 +517,36 @@ button {
 	color: #ff9d8a;
 }
 
+/* Scene link: a one-click copy chip in the topbar so the OBS source URL is always to hand. */
+.topbar__scene {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	min-height: 26px;
+	padding: 0 11px;
+	border: 1px solid var(--line);
+	border-radius: 999px;
+	background: rgba(255, 255, 255, 0.04);
+	color: var(--muted);
+	cursor: copy;
+	font-size: 10px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.12em;
+	white-space: nowrap;
+	transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.topbar__scene i {
+	font-size: 13px;
+}
+
+.topbar__scene:hover {
+	background: rgba(198, 118, 59, 0.14);
+	border-color: rgba(198, 118, 59, 0.4);
+	color: #e7b487;
+}
+
 /* ── Panels ── */
 
 .scenes-panel,
@@ -2508,6 +2538,10 @@ body[data-transcript="on"] .raw-tr-live{display:inline-block}
 .raw-hostcam-pub { position:fixed; left:-10000px; top:0; width:640px; height:360px; border:0; }
 body:not([data-raw-self="host"]) #stage-overlay { pointer-events:none; }
 body:not([data-raw-self="host"]) .raw-quickbar { pointer-events:none; opacity:.5; }
+/* While standby is live the program frame is a full branded takeover; hide the console's
+   transparent layout-box grid drawn over it so the console preview matches the clean OBS output
+   (otherwise the standby reads as per-feed boxes rather than one full-screen card). */
+body[data-program-standby="true"] #stage-overlay { opacity:0 !important; pointer-events:none !important; }
 .raw-seat-assign,.raw-seat-del { display:none !important; }
 
 /* ============================================================

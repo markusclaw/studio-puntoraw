@@ -1,5 +1,57 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>.RAW — Program</title>
 <style>
-*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0c0b0a;color:#ece7dd;font-family:monospace}#program{position:absolute;inset:0}.tile{position:absolute;overflow:hidden;background:#141312}.tile iframe{position:absolute;inset:0;width:100%;height:100%;border:0}.name{position:absolute;bottom:8px;left:10px;background:#111b;padding:3px 7px;font-size:clamp(10px,1.2vw,24px);z-index:2}.waiting{position:absolute;inset:0;display:grid;place-items:center;color:#8f877b;letter-spacing:.2em}#standby{position:absolute;inset:0;background:#0c0b0a;z-index:100;display:grid;place-content:center;text-align:center;gap:20px;font-size:clamp(15px,3vw,64px)}#standby b{color:#c6763b;font-size:2em}#logo{position:absolute;right:3%;top:4%;color:#c6763b;font-size:clamp(20px,4vw,70px);font-weight:bold;z-index:110;text-shadow:0 2px 8px #000} [hidden]{display:none!important}
-</style></head><body><div id="program"></div><div id="standby"><b>.RAW</b><span id="standby-message">Connecting to studio</span></div><div id="logo" hidden>.RAW</div><script src="room-client.js"></script><script src="program.js"></script></body></html>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0c0b0a;color:#ece7dd;font-family:monospace}
+:root{
+  /* One cheap, static SVG-turbulence texture reused for waiting tiles + standby (no per-frame
+     canvas: the old 57k-Math.random()/66ms grain was a documented perf cost). */
+  --noise:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+#program{position:absolute;inset:0}
+.tile{position:absolute;overflow:hidden;background:#141312}
+.tile iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.name{position:absolute;bottom:8px;left:10px;background:#111b;padding:3px 7px;font-size:clamp(10px,1.2vw,24px);z-index:2}
+/* Waiting state: light animated static behind the label. A live feed's iframe sits ABOVE
+   .waiting in the tile, so the static only ever shows when there is genuinely no feed. */
+.waiting{position:absolute;inset:0;display:grid;place-items:center;color:#8f877b;letter-spacing:.2em;overflow:hidden}
+.waiting::before{content:"";position:absolute;inset:-40%;background-image:var(--noise);opacity:.05;
+  animation:snow .5s steps(3) infinite;pointer-events:none}
+@keyframes snow{0%{transform:translate(0,0)}33%{transform:translate(-5%,3%)}66%{transform:translate(4%,-4%)}100%{transform:translate(-3%,-2%)}}
+/* Standby: a branded full-feed takeover that sits above every tile AND the logo. */
+#standby{position:absolute;inset:0;z-index:9999;display:flex;flex-direction:column;background:#0b0a09}
+#standby::after{content:"";position:absolute;inset:0;background-image:var(--noise);opacity:.045;
+  animation:snow .5s steps(3) infinite;pointer-events:none;mix-blend-mode:screen}
+.sb-bars{flex:1;display:flex}
+.sb-bars span{flex:1}
+.sb-bars .c0{background:#b0b0b0}.sb-bars .c1{background:#b5b000}.sb-bars .c2{background:#00b3b3}
+.sb-bars .c3{background:#12a52a}.sb-bars .c4{background:#b02a9e}.sb-bars .c5{background:#c23a2a}.sb-bars .c6{background:#2f4bd0}
+.sb-band{height:28%;min-height:110px;background:linear-gradient(180deg,#100e0c,#0a0908);
+  display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:24px;
+  padding:0 clamp(24px,4vw,72px);border-top:1px solid rgba(255,255,255,.08)}
+.sb-brand{display:flex;align-items:center;gap:14px}
+.sb-dot{width:clamp(10px,1vw,14px);height:clamp(10px,1vw,14px);border-radius:50%;background:#E0483B;
+  box-shadow:0 0 16px rgba(224,72,59,.6);animation:sbpulse 1.7s ease-in-out infinite}
+.sb-wm{font-size:clamp(16px,2vw,32px);font-weight:700;letter-spacing:.02em}
+.sb-wm .a{color:#C6763B}
+.sb-msg{text-align:center}
+.sb-big{font-size:clamp(24px,4.2vw,64px);font-weight:700;letter-spacing:.06em;text-transform:uppercase;text-wrap:balance}
+.sb-sub{margin-top:8px;font-size:clamp(9px,.9vw,13px);letter-spacing:.34em;text-transform:uppercase;color:#9a9186}
+.sb-clock{justify-self:end;font-size:clamp(20px,2.6vw,44px);font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:.04em}
+@keyframes sbpulse{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){ .sb-dot,.waiting::before,#standby::after{animation:none} }
+#logo{position:absolute;right:3%;top:4%;color:#c6763b;font-size:clamp(20px,4vw,70px);font-weight:bold;z-index:110;text-shadow:0 2px 8px #000}
+[hidden]{display:none!important}
+</style></head>
+<body>
+<div id="program"></div>
+<div id="standby">
+  <div class="sb-bars"><span class="c0"></span><span class="c1"></span><span class="c2"></span><span class="c3"></span><span class="c4"></span><span class="c5"></span><span class="c6"></span></div>
+  <div class="sb-band">
+    <div class="sb-brand"><span class="sb-dot"></span><span class="sb-wm"><span class="a">.RAW</span> SESSIONS</span></div>
+    <div class="sb-msg"><div class="sb-big" id="standby-message">Be right back</div><div class="sb-sub">Standing by</div></div>
+    <div class="sb-clock" id="standby-clock">--:--</div>
+  </div>
+</div>
+<div id="logo" hidden>.RAW</div>
+<script src="room-client.js"></script><script src="program.js"></script></body></html>

@@ -3,7 +3,7 @@
  const p=new URLSearchParams(location.search),room=p.get('room')||'master_sessions_raw',monitor=p.has('monitor');
  const client=new RawRoomClient(room,{id:crypto.randomUUID(),token:crypto.randomUUID(),viewer:true});
  const container=document.getElementById('program'),standby=document.getElementById('standby'),message=document.getElementById('standby-message');
- const tiles=new Map();let snapshot=null,offline=true,solo=null,interrupted=false,fatalMsg='',offlineTimer=null;
+ const tiles=new Map();let snapshot=null,offline=true,solo=null,interrupted=false,fatalMsg='',offlineTimer=null,sbAudio=null;
  // Watchdog thresholds. A viewer that never produces a first frame, or whose decoded-frame
  // counter stalls, is silently reconnected by rebuilding its iframe — VDO keeps the same
  // streamID across publisher blips, so nothing else would ever recover a frozen tile.
@@ -18,6 +18,20 @@
    const gain=muted?0:(mix.gain/100)*(snapshot.program.master/100);
    tile.frame.contentWindow?.postMessage({volume:gain},'https://vdo.ninja');
    tile.frame.contentWindow?.postMessage({mute:muted},'https://vdo.ninja');
+ }
+ // Standby test tone (~1kHz, the SMPTE-bars tone) — emitted ONLY on the OBS/output page,
+ // never the operator's console monitor. Ramped in/out to avoid clicks. Requires the page's
+ // autoplay to be allowed (OBS Browser Source is; a normal tab needs one prior interaction).
+ function standbyTone(on){
+   if(monitor)return;
+   if(on&&!sbAudio){
+     try{const AC=window.AudioContext||window.webkitAudioContext,ctx=new AC(),osc=ctx.createOscillator(),g=ctx.createGain();
+       osc.type='sine';osc.frequency.value=1000;g.gain.value=0.0001;osc.connect(g);g.connect(ctx.destination);osc.start();
+       g.gain.exponentialRampToValueAtTime(0.03,ctx.currentTime+0.4);sbAudio={ctx,osc,g};}catch(e){}
+   } else if(!on&&sbAudio){
+     const a=sbAudio;sbAudio=null;
+     try{a.g.gain.exponentialRampToValueAtTime(0.0001,a.ctx.currentTime+0.2);a.osc.stop(a.ctx.currentTime+0.25);setTimeout(()=>{try{a.ctx.close();}catch(e){}},400);}catch(e){}
+   }
  }
  // Build (or rebuild) the VDO view iframe for a tile. The combo that works is
  // `room` + `view=ID` + `solo=1`: a bare view=ID renders black (stream IDs are salted by the
@@ -79,6 +93,7 @@
    for(const [key,tile] of tiles)if(!keep.has(key)){if(tile.dropTimer)clearTimeout(tile.dropTimer);tile.el.remove();tiles.delete(key);}
    const holdVisible=program.standby||!!fatalMsg||(interrupted&&monitor);   // audit 1.1: OBS (!monitor) shows the hold only for a real standby/fatal, never a transient control blip
    standby.hidden=!holdVisible;message.textContent=fatalMsg||(program.standby?'Be right back':'Studio connection interrupted');document.getElementById('logo').hidden=!program.logo;
+   standbyTone(program.standby);   // TV-style standby tone on the OBS output when standby is live
  }
  // Liveness watchdog: poll each live tile for stats, and rebuild any iframe that never
  // produced a first frame or whose frame counter has stalled while its member is still on
@@ -108,6 +123,8 @@
  });
  const timer=setInterval(()=>{for(const tile of tiles.values())volume(tile);},2000);
  const guard=setInterval(watchdog,3000);
- window.addEventListener('pagehide',()=>{clearInterval(timer);clearInterval(guard);client.close();});
+ const clockEl=document.getElementById('standby-clock');
+ const clock=setInterval(()=>{if(!clockEl)return;const d=new Date(),p=n=>String(n).padStart(2,'0');clockEl.textContent=p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());},1000);
+ window.addEventListener('pagehide',()=>{clearInterval(timer);clearInterval(guard);clearInterval(clock);standbyTone(false);client.close();});
  client.connect();
 })();

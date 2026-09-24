@@ -157,6 +157,7 @@ function receiveRoom(snapshot,opts){
  remoteRender=true;programPending=false;
  clearTimeout(state.saveTimer);
  const p=snapshot.program;
+ document.body.dataset.programStandby=p.standby?'true':'false';   // console hides its layout-box grid over the program frame while standby is live, so the preview matches the clean OBS takeover
  state.scenes=clone(p.scenes);state.activeSceneId=p.activeSceneId;state.brand=clone(p.brand);
  state.lastAppliedSceneId=p.activeSceneId;
  state.placeholders=[{seat:'rj',name:'RJ',slot:1},{seat:'greg',name:'Greg',slot:2},{seat:'rafa',name:'Rafa',slot:3},...snapshot.members.filter(m=>m.role==='guest'&&m.admitted)].map(m=>({streamID:m.seat?'seat_'+m.seat:'guest_'+m.id,label:m.name,slot:m.slot,host:!!m.seat,placeholder:true}));
@@ -2257,6 +2258,7 @@ function bindEvents() {
 		}
 	});
 	document.getElementById("copy-scene").addEventListener("click", () => copyText(document.getElementById("scene-link").value, "Scene link"));
+	document.getElementById("copy-scene-top")?.addEventListener("click", () => copyText(buildSceneUrl(), "Scene link"));
 	document.getElementById("open-scene").addEventListener("click", () => openUrl(buildSceneUrl(), "Scene link opened"));
 	document.getElementById("record-scene").addEventListener("click", () => openUrl(buildSceneUrl({ record: true }), "Program opened — record in OBS"));
 	document.getElementById("open-meshcast").addEventListener("click", () => openUrl("https://app.meshcast.io/", "Meshcast opened"));
