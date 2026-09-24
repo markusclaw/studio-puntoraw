@@ -14,7 +14,11 @@
     if(frame&&member?.streamID===me.streamID)return;
     stop(false);member=me;state='connecting';
     const st=window.studioApp?.state;
-    const q=new URLSearchParams({room:st.room,webcam:'',push:me.streamID,label:me.name,cleanoutput:'',autostart:'',nosettings:''});
+    // audit 2.3: cap what each host publishes (was up to 720x1280 @ ~4Mbps per peer, the freeze
+    // cause on P2P). quality=1 → 720p, 30fps, 2.5Mbps ceiling. These only reduce; they never
+    // disable the camera. (novideo — stop the publisher decoding OTHERS' video — is a separate,
+    // riskier change tested on its own.)
+    const q=new URLSearchParams({room:st.room,webcam:'',push:me.streamID,label:me.name,cleanoutput:'',autostart:'',nosettings:'',quality:'1',maxframerate:'30',videobitrate:'2500'});
     if(st.password)q.set('password',st.password);
     for(const [key,param] of [['cam','videodevice'],['mic','audiodevice']]){const v=sessionStorage.getItem('raw.host.'+key);if(v&&v!=='Default')q.set(param,v);}
     frame=document.createElement('iframe');frame.className='raw-hostcam-pub';frame.title='My camera and host conversation';frame.allow='camera; microphone; autoplay';frame.src='https://vdo.ninja/?'+q;document.body.appendChild(frame);sync();
