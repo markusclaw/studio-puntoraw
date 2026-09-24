@@ -120,6 +120,9 @@
    for(const [key,tile] of tiles)if(!keep.has(key)){if(tile.dropTimer)clearTimeout(tile.dropTimer);tile.el.remove();tiles.delete(key);}
    const holdVisible=program.standby||!!fatalMsg||(interrupted&&monitor);   // audit 1.1: OBS (!monitor) shows the hold only for a real standby/fatal, never a transient control blip
    standby.hidden=!holdVisible;message.textContent=fatalMsg||(program.standby?'Be right back':'Studio connection interrupted');document.getElementById('logo').hidden=!program.logo;
+   // feature: show the session/episode metadata on the standby screen ("S2 · E14 · Title")
+   const subEl=document.getElementById('standby-sub');
+   if(subEl){const ep=program.episode||{};const line=[ep.season&&('S'+ep.season),ep.number&&('E'+ep.number),ep.title].filter(Boolean).join(' · ');subEl.textContent=line||'Standing by';}
    standbyTone(program.standby);   // TV-style standby tone on the OBS output when standby is live
  }
  // Liveness watchdog: poll each live tile for stats, and rebuild any iframe that never

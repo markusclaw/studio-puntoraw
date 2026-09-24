@@ -80,6 +80,15 @@
 					</div>
 				</header>
 
+				<!-- ── Session metadata bar (feature: episode info synced to every console + OBS) ── -->
+				<div class="session-bar" aria-label="Session information">
+					<span class="session-bar__eyebrow">Session</span>
+					<label class="session-field"><span>Season</span><input id="ep-season" type="text" maxlength="24" placeholder="—" autocomplete="off" /></label>
+					<label class="session-field"><span>Episode</span><input id="ep-number" type="text" maxlength="24" placeholder="—" autocomplete="off" /></label>
+					<label class="session-field session-field--title"><span>Title</span><input id="ep-title" type="text" maxlength="140" placeholder="Untitled session" autocomplete="off" /></label>
+					<span class="session-bar__hint" id="ep-hint"></span>
+				</div>
+
 				<!-- ── Scenes Panel (left) ── -->
 				<aside class="scenes-panel" aria-label="Scenes">
 					<div class="panel-heading">
@@ -910,6 +919,7 @@ window.rawCanControl = function(){ return !!window.RawHost?.canControl(); };
 </script>
 <script src="./desk.js" defer></script>
 <script src="./broadcast.js" defer></script>
+<script src="./episode.js" defer></script>
 <script src="./jumpin.js" defer></script>
 <script src="./hostcam.js" defer></script>
 
