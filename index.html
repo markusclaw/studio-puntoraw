@@ -139,8 +139,8 @@
 								<canvas id="static-canvas" class="static-canvas"></canvas>
 								<div class="stage-empty__text">NO SIGNAL</div>
 							</div>
-							<!-- audit 4.3: persistent operator alert while the program is on standby (CSS-driven by body[data-program-standby]) -->
-							<div class="raw-standby-ribbon" aria-hidden="true"><span class="raw-standby-ribbon__dot"></span>ON STANDBY</div>
+							<!-- audit 4.3: persistent operator alert while the program is on standby (CSS-driven by body[data-program-standby]). Unique class — must NOT collide with host.js's .raw-standby-ribbon (its observer take-control bar). -->
+							<div class="raw-onair-standby" aria-hidden="true"><span class="raw-onair-standby__dot"></span>ON STANDBY</div>
 						</div>
 						<div class="box-inspector" id="box-inspector" data-empty="true" aria-label="Selected source controls">
 							<div class="box-inspector__summary">

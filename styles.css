@@ -2592,15 +2592,17 @@ body:not([data-raw-self="host"]) .raw-quickbar { pointer-events:none; opacity:.5
    transparent layout-box grid drawn over it so the console preview matches the clean OBS output
    (otherwise the standby reads as per-feed boxes rather than one full-screen card). */
 body[data-program-standby="true"] #stage-overlay { opacity:0 !important; pointer-events:none !important; }
-/* audit 4.3: an unmistakable red "ON STANDBY" ribbon over the console stage while standby is live. */
-.raw-standby-ribbon{display:none;position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:60;
+/* audit 4.3: an unmistakable red "ON STANDBY" ribbon over the console stage while standby is live.
+   NOTE: unique class (raw-onair-standby) — host.js already defines .raw-standby-ribbon for its own
+   observer take-control bar; reusing that name collided and drew it full-page. */
+.raw-onair-standby{display:none;position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:60;
   align-items:center;gap:8px;background:#E0483B;color:#fff;font-family:var(--mono,ui-monospace,monospace);
   font-size:11px;font-weight:700;letter-spacing:.24em;text-transform:uppercase;padding:6px 16px;border-radius:999px;
   box-shadow:0 6px 20px rgba(224,72,59,.5);pointer-events:none}
-.raw-standby-ribbon__dot{width:8px;height:8px;border-radius:50%;background:#fff;box-shadow:0 0 8px rgba(255,255,255,.8);animation:sbribbon 1.4s ease-in-out infinite}
+.raw-onair-standby__dot{width:8px;height:8px;border-radius:50%;background:#fff;box-shadow:0 0 8px rgba(255,255,255,.8);animation:sbribbon 1.4s ease-in-out infinite}
 @keyframes sbribbon{50%{opacity:.3}}
-@media (prefers-reduced-motion:reduce){.raw-standby-ribbon__dot{animation:none}}
-body[data-program-standby="true"] .raw-standby-ribbon{display:flex}
+@media (prefers-reduced-motion:reduce){.raw-onair-standby__dot{animation:none}}
+body[data-program-standby="true"] .raw-onair-standby{display:flex}
 .raw-seat-assign,.raw-seat-del { display:none !important; }
 
 /* ============================================================
