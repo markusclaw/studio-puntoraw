@@ -130,6 +130,18 @@ test('resolveJoinRole: an unknown seat is rejected; no seat is a guest', () => {
   assert.deepEqual(resolveJoinRole({ seat: '' }, HOSTS), { role: 'guest', host: null });
 });
 
+// feature: session/episode metadata lives in the program and survives scene/brand edits.
+test('initialProgram seeds an empty episode object', () => {
+  assert.deepEqual(initialProgram().episode, { season: '', number: '', title: '' });
+});
+
+test('sanitizeProgram preserves episode across a scene/brand edit', () => {
+  const prev = initialProgram();
+  prev.episode = { season: '2', number: '14', title: 'The End of Genesys' };
+  const out = sanitizeProgram({ activeSceneId: 'main', scenes: [{ id: 'main', name: 'Main', layout: [] }], brand: { background: '#111111', radius: 0, labels: true } }, prev);
+  assert.deepEqual(out.episode, { season: '2', number: '14', title: 'The End of Genesys' });
+});
+
 test('mixer: exactly 3 host channels + admitted guests + master, no label-driven duplicates', () => {
   const members = [
     crew('r', 'rj', 1), crew('g', 'greg', 2), crew('f', 'rafa', 3),

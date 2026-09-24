@@ -2,7 +2,7 @@ export const HOSTS = [{ seat: 'rj', name: 'RJ', slot: 1 }, { seat: 'greg', name:
 export const LEASE_MS = 20000;
 export const PRESENCE_MS = 30000;
 export function initialProgram() {
-  return { revision: 0, activeSceneId: 'main', scenes: [{ id: 'main', name: 'Main', auto: false, layout: HOSTS.map((h, i) => ({ id: 'box_'+h.seat, slot: i, streamID: '', label: h.name, x: i*100/3, y: 0, w: 100/3, h: 100, z: i+1, cover: true })) }], brand: { background: '#0c0b0a', radius: 0, labels: true }, mix: {}, master: 100, masterMuted: false, standby: false, logo: false, session: { live: false, startedAt: null } };
+  return { revision: 0, activeSceneId: 'main', scenes: [{ id: 'main', name: 'Main', auto: false, layout: HOSTS.map((h, i) => ({ id: 'box_'+h.seat, slot: i, streamID: '', label: h.name, x: i*100/3, y: 0, w: 100/3, h: 100, z: i+1, cover: true })) }], brand: { background: '#0c0b0a', radius: 0, labels: true }, mix: {}, master: 100, masterMuted: false, standby: false, logo: false, session: { live: false, startedAt: null }, episode: { season: '', number: '', title: '' } };
 }
 const num = (v, min, max) => typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max;
 export function sanitizeProgram(input, previous) {

@@ -11,6 +11,7 @@ export class RawStudioRoom extends DurableObject {
     this._saved={}; // JSON of last-written value per key, for change detection in persist()
     ctx.blockConcurrencyWhile(async()=>{
       this.program=await ctx.storage.get('program-v2') || initialProgram();
+      if(!this.program.episode) this.program.episode={season:'',number:'',title:''};   // audit/feature: episode metadata added later; backfill for rooms persisted before it existed
       // Persisted badge/guests/seats carry only durable fields; rolling fields
       // (lease expiry, presence timestamps) are rebuilt here so they never drive writes.
       const b=await ctx.storage.get('badge-v2'); this.badge=b?{hostId:b.hostId,term:b.term||0,expiresAt:0}:this.badge;
@@ -161,6 +162,13 @@ export class RawStudioRoom extends DurableObject {
       if(typeof m.standby==='boolean') this.program.standby=m.standby;
       if(typeof m.logo==='boolean') this.program.logo=m.logo;
       if(typeof m.live==='boolean') this.program.session={live:m.live,startedAt:m.live?(this.program.session.live?this.program.session.startedAt:Date.now()):null};
+      this.program.revision++;
+    } else if(m.type==='episode') {
+      // feature: session/episode metadata (season, number, title), edited by the controller and
+      // synced to every console + the OBS output. Strings only, length-capped.
+      if(!owns) return this.error(ws,'forbidden','Only the controller can edit session info.');
+      const e=m.episode||{};
+      this.program.episode={season:String(e.season||'').slice(0,24),number:String(e.number||'').slice(0,24),title:String(e.title||'').slice(0,140)};
       this.program.revision++;
     } else return;
     await this.reconcile(); await this.persist(); this.broadcast();
