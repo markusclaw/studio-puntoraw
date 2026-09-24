@@ -16,17 +16,18 @@
    tile.frame.contentWindow?.postMessage({volume:gain},'https://vdo.ninja');
    tile.frame.contentWindow?.postMessage({mute:muted},'https://vdo.ninja');
  }
- // Build (or rebuild) the VDO view iframe for a tile. The viewer must be a room SCENE
- // (`room` + `scene` + `view=ID`): a bare view=ID renders black (stream IDs are salted by the
- // room), and `room`+`view` WITHOUT `scene` makes VDO.Ninja show its "Join Room" chooser
- // instead of the video — that was the black stage. `scene` + an explicit `view` pulls exactly
- // this one stream at program quality regardless of the director's scene toggles. Rebuilding
- // is also how a frozen/stale connection is recovered, since the streamID never changes.
+ // Build (or rebuild) the VDO view iframe for a tile. The combo that works is
+ // `room` + `view=ID` + `solo=1`: a bare view=ID renders black (stream IDs are salted by the
+ // room), and `room`+`view` WITHOUT a join mode makes VDO.Ninja show its "Join Room" chooser
+ // (hidden by cleanoutput → black). solo=1 views that one stream cleanly. NOTE: `scene:''`
+ // does NOT work here — URLSearchParams serializes it to an empty `scene=`, which VDO can't
+ // parse and falls back to the chooser; solo=1 has an unambiguous value. Verified live.
+ // Rebuilding is also how a frozen/stale connection is recovered, since the streamID never changes.
  function mountView(tile,box,streamID){
    tile.frame?.remove();
    tile.streamID=streamID;tile.connected=false;tile.mountAt=Date.now();
    tile.frames=-1;tile.framesAt=Date.now();tile.remountAt=Date.now();
-   const q=new URLSearchParams({room,scene:'',view:streamID,cleanoutput:'',autostart:'',speakermute:'',transparent:'',cover:box.cover===false?'0':'1'});
+   const q=new URLSearchParams({room,view:streamID,solo:'1',cleanoutput:'',autostart:'',speakermute:'',transparent:'',cover:box.cover===false?'0':'1'});
    if(p.get('password'))q.set('password',p.get('password'));
    // The console's own preview pane is a monitor, not the OBS output: ask the publisher for a
    // lighter stream so each host's upload (VDO is peer-to-peer) isn't multiplied at full rate.
