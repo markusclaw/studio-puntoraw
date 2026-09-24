@@ -106,7 +106,7 @@
 								<button type="button" id="transcript-toggle" class="button button--secondary button--compact">Start</button>
 							</div>
 						</div>
-						<div id="transcript-log" class="transcript-log" aria-live="polite">
+						<div id="transcript-log" class="transcript-log" role="log" aria-live="polite">
 							<div class="transcript-empty">Press Start to begin live transcription</div>
 						</div>
 					</div>
@@ -238,7 +238,7 @@
 							<div class="guest-actions">
 								<button type="button" id="toggle-join-sound" class="button button--secondary button--compact" aria-pressed="false">Join sound: Off</button>
 								<button type="button" id="add-samples" class="button button--secondary button--compact">Samples</button>
-								<button type="button" id="add-placeholder" class="icon-button" title="Add guest slot" aria-label="Add guest slot"><i class="las la-plus-square"></i></button>
+								<button type="button" id="add-placeholder" class="icon-button" title="Add guest slot" aria-label="Add guest slot" hidden><i class="las la-plus-square"></i></button><!-- audit 4.8: hidden — it added a local phantom slot the next room snapshot erased; guests join via the invite link -->
 							</div>
 						</div>
 						<div class="crew-card crew-card--ai">
@@ -251,7 +251,7 @@
 								<span class="crew-card__badge">AI</span>
 							</div>
 						</div>
-						<div id="source-list" class="source-list" aria-live="polite"></div>
+						<div id="source-list" class="source-list"></div><!-- audit 4.8: no aria-live — the list is fully rebuilt on every poll, which spammed screen readers with the whole roster -->
 					</section>
 
 					<!-- ── Design Tab ── -->
