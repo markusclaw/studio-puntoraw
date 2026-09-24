@@ -10,12 +10,18 @@
  // DROP_GRACE_MS (audit 1.2): keep a live tile through a control-channel blip ~= PRESENCE_MS,
  // so a reconnecting host doesn't black out on air. OFFLINE_CARD_MS (audit 1.1): the console
  // monitor waits this long before showing an interruption card; OBS never shows one.
- const FIRST_FRAME_MS=12000, STALL_MS=7000, REMOUNT_COOLDOWN_MS=15000, DROP_GRACE_MS=25000, OFFLINE_CARD_MS=20000;
+ const FIRST_FRAME_MS=12000, STALL_MS=12000, REMOUNT_COOLDOWN_MS=15000, DROP_GRACE_MS=25000, OFFLINE_CARD_MS=20000;   // audit 2.6: STALL_MS 7s→12s so a brief network stutter no longer triggers a reconnect
  function volume(tile){
    if(!tile.frame||!snapshot)return;
    const mix=snapshot.program.mix[String(tile.slot)]||{gain:100,muted:false};
    const muted=monitor || snapshot.program.standby || snapshot.program.masterMuted || mix.muted;   // audit 1.1: a control-channel blip must NOT mute the OBS output — the VDO P2P media is unaffected
    const gain=muted?0:(mix.gain/100)*(snapshot.program.master/100);
+   // audit 2.6: idempotent — only postMessage when the level actually changed, with a 10s
+   // keepalive so a reloaded VDO iframe still gets its levels. mountView resets this cache so a
+   // freshly-mounted iframe is always addressed.
+   const now=Date.now();
+   if(tile.lastGain===gain && tile.lastMuted===muted && tile.volAt && now-tile.volAt<10000) return;
+   tile.lastGain=gain;tile.lastMuted=muted;tile.volAt=now;
    tile.frame.contentWindow?.postMessage({volume:gain},'https://vdo.ninja');
    tile.frame.contentWindow?.postMessage({mute:muted},'https://vdo.ninja');
  }
@@ -62,11 +68,15 @@
    tile.frame?.remove();
    tile.streamID=streamID;tile.connected=false;tile.mountAt=Date.now();
    tile.frames=-1;tile.framesAt=Date.now();tile.remountAt=Date.now();
+   tile.volAt=0;tile.lastGain=null;tile.lastMuted=null;   // audit 2.6: reset the volume cache so the new iframe is (re)addressed on load
    const q=new URLSearchParams({room,view:streamID,solo:'1',cleanoutput:'',autostart:'',speakermute:'',transparent:'',cover:box.cover===false?'0':'1'});
    if(p.get('password'))q.set('password',p.get('password'));
    // The console's own preview pane is a monitor, not the OBS output: ask the publisher for a
    // lighter stream so each host's upload (VDO is peer-to-peer) isn't multiplied at full rate.
-   if(monitor)q.set('videobitrate','1200');
+   // audit 2.7: 1200→500 kbps and drop audio entirely (the monitor is force-muted anyway, and
+   // the desk VU reads loudness from the director iframe, not these tiles). OBS (monitor=false)
+   // keeps full bitrate and audio.
+   if(monitor){q.set('videobitrate','500');q.set('noaudio','');}
    const f=document.createElement('iframe');f.title=tile.name.textContent;f.allow='autoplay';f.src='https://vdo.ninja/?'+q;
    tile.frame=f;f.addEventListener('load',()=>volume(tile));tile.el.insertBefore(f,tile.name);
  }
@@ -120,10 +130,21 @@
    for(const tile of tiles.values()){
      if(!tile.frame||!tile.streamID)continue;
      tile.frame.contentWindow?.postMessage({getStats:true},'https://vdo.ninja');
-     if(!memberPresent(tile.streamID) || now-tile.remountAt<REMOUNT_COOLDOWN_MS)continue;
+     // audit 2.6: exponential backoff 15→30→60s. A host who legitimately turned their camera off
+     // stops advancing frames and would otherwise be remounted every 15s forever; the backoff caps
+     // that at once a minute, and a frame advance (see the message handler) resets the count so a
+     // genuinely recovered feed gets fast 15s recovery again.
+     const cooldown=Math.min(60000, REMOUNT_COOLDOWN_MS*Math.pow(2, tile.remountCount||0));
+     if(!memberPresent(tile.streamID) || now-tile.remountAt<cooldown)continue;
      const noFirstFrame = !tile.connected && now-tile.mountAt>FIRST_FRAME_MS;
      const stalled = tile.connected && tile.frames>0 && now-tile.framesAt>STALL_MS;
-     if(noFirstFrame||stalled){ tile.wait.textContent=stalled?'RECONNECTING':'WAITING FOR CAMERA'; mountView(tile,tile.box,tile.streamID); }
+     if(noFirstFrame||stalled){
+       const reason=stalled?'stalled':'no-first-frame';
+       tile.remountCount=(tile.remountCount||0)+1;
+       console.info('[program] remount',tile.streamID,reason,'#'+tile.remountCount);
+       tile.wait.textContent=stalled?'RECONNECTING':'WAITING FOR CAMERA';
+       mountView(tile,tile.box,tile.streamID);
+     }
    }
  }
  client.addEventListener('state',e=>{snapshot=e.detail;offline=false;interrupted=false;fatalMsg='';clearTimeout(offlineTimer);offlineTimer=null;render();});
@@ -135,11 +156,11 @@
    for(const tile of tiles.values()){
      if(tile.frame?.contentWindow!==e.source)continue;
      if(['video-created','video-added','view-connection','loaded','joined-room'].includes(e.data?.action)){tile.connected=true;volume(tile);}
-     if(e.data?.stats){const fc=frameCount(e.data.stats);if(fc>=0){tile.connected=true;if(fc!==tile.frames){tile.frames=fc;tile.framesAt=Date.now();}}}
+     if(e.data?.stats){const fc=frameCount(e.data.stats);if(fc>=0){tile.connected=true;if(fc!==tile.frames){tile.frames=fc;tile.framesAt=Date.now();tile.remountCount=0;}}}   // audit 2.6: a live, advancing feed resets the remount backoff
    }
  });
  const timer=setInterval(()=>{for(const tile of tiles.values())volume(tile);},2000);
- const guard=setInterval(watchdog,3000);
+ const guard=setInterval(watchdog,5000);   // audit 2.6: getStats every 5s (was 3s)
  const clockEl=document.getElementById('standby-clock');
  const clock=setInterval(()=>{if(!clockEl)return;const d=new Date(),p=n=>String(n).padStart(2,'0');clockEl.textContent=p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());},1000);
  window.addEventListener('pagehide',()=>{clearInterval(timer);clearInterval(guard);clearInterval(clock);standbyTone(false);client.close();});

@@ -27,7 +27,10 @@
        const name=document.createElement('div');name.className='raw-strip__name';name.textContent=ch.name;
        strip.innerHTML='<div class="raw-strip__body"><input type="range" class="raw-fader" min="0" max="100" value="100" orient="vertical"><div class="raw-vu"><span class="raw-vu__fill"></span></div></div><div class="raw-strip__btns"><button type="button" class="raw-mbtn">MUTE</button></div><div class="raw-strip__state"></div>';
        strip.prepend(name);const f=strip.querySelector('input');f.setAttribute('aria-label',ch.name+' program level');
-       let debounce;f.addEventListener('input',()=>{clearTimeout(debounce);debounce=setTimeout(()=>send(ch.slot,{gain:+f.value}),80);});
+       // audit 2.5: 150ms debounce while dragging (was 80ms → ~12 sends/s) plus a guaranteed
+       // final send on release, so the room never storms yet always lands the released value.
+       let debounce;f.addEventListener('input',()=>{clearTimeout(debounce);debounce=setTimeout(()=>send(ch.slot,{gain:+f.value}),150);});
+       f.addEventListener('change',()=>{clearTimeout(debounce);send(ch.slot,{gain:+f.value});});
        strip.querySelector('button').addEventListener('click',()=>send(ch.slot,{muted:ch.slot==='master'?!snapshot.program.masterMuted:!snapshot.program.mix[ch.slot]?.muted}));rack.appendChild(strip);
      }}
      if(!snapshot)return;

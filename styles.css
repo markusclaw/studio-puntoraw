@@ -17,6 +17,11 @@
 	--accent-2: #D2542A;
 	--danger: #D6412B;
 	--warning: #ffc857;
+	/* audit 5: declare the tokens every var(--bronze/--smoke/--offwhite, fallback) relied on so
+	   they resolve from :root instead of the inline fallback (values match the existing fallbacks). */
+	--bronze: #C6763B;
+	--smoke: #948B7E;
+	--offwhite: #E6DFD2;
 	--success: #49f0a7;
 	--ai-cyan: #3ee8d0;
 	--radius: 6px;
@@ -870,14 +875,13 @@ button {
 	background: rgba(198, 118, 59, 0.12);
 	box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.3);
 	cursor: move;
+	/* audit 2.8: dropped the left/top/width/height transitions and will-change. These boxes are
+	   pointer-events:none and transparent over the live video; will-change promoted each to its own
+	   compositor layer stacked on the video, and animating position gained nothing. Keep only the
+	   cheap colour transitions for editor selection feedback. */
 	transition:
-		left 180ms ease,
-		top 180ms ease,
-		width 180ms ease,
-		height 180ms ease,
 		background 120ms ease,
 		border-color 120ms ease;
-	will-change: left, top, width, height;
 }
 
 .stage-overlay[data-dragging="true"] .layout-box {
@@ -1687,7 +1691,7 @@ button {
 	position: fixed;
 	left: 50%;
 	bottom: 18px;
-	z-index: 50;
+	z-index: 10002;   /* audit 4.6: above the standby ribbon/overlays so feedback is never hidden mid-show */
 	max-width: min(480px, calc(100vw - 40px));
 	transform: translate(-50%, 20px);
 	opacity: 0;
@@ -2508,9 +2512,12 @@ body[data-transcript="on"] .raw-tr-live{display:inline-block}
 @media (min-width: 901px){
   .program-panel{ min-height:0; }
   .program-panel .stage-shell{ grid-template-rows:minmax(0,1fr)!important; min-height:0; }
+  /* audit 4.7: width-driven, so the preview is ALWAYS true 16:9 and matches OBS. Sizing off
+     height:100% + max-width let the box become e.g. 1.46:1 on 1024x768. The width budget subtracts
+     the topbar (~56), toolbar (~58) and the control desk (~310) from the viewport height. */
   .program-panel .stage-aspect{
-    width:auto!important; height:100%!important;
-    max-width:100%!important; max-height:min(100%, calc(100vh - 300px))!important;
+    width:min(100%, calc((100vh - 56px - 58px - 310px) * 16 / 9))!important; height:auto!important;
+    max-width:100%!important;
     margin-inline:auto;
   }
   .raw-desk{ margin-top:10px; }
@@ -2585,6 +2592,15 @@ body:not([data-raw-self="host"]) .raw-quickbar { pointer-events:none; opacity:.5
    transparent layout-box grid drawn over it so the console preview matches the clean OBS output
    (otherwise the standby reads as per-feed boxes rather than one full-screen card). */
 body[data-program-standby="true"] #stage-overlay { opacity:0 !important; pointer-events:none !important; }
+/* audit 4.3: an unmistakable red "ON STANDBY" ribbon over the console stage while standby is live. */
+.raw-standby-ribbon{display:none;position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:60;
+  align-items:center;gap:8px;background:#E0483B;color:#fff;font-family:var(--mono,ui-monospace,monospace);
+  font-size:11px;font-weight:700;letter-spacing:.24em;text-transform:uppercase;padding:6px 16px;border-radius:999px;
+  box-shadow:0 6px 20px rgba(224,72,59,.5);pointer-events:none}
+.raw-standby-ribbon__dot{width:8px;height:8px;border-radius:50%;background:#fff;box-shadow:0 0 8px rgba(255,255,255,.8);animation:sbribbon 1.4s ease-in-out infinite}
+@keyframes sbribbon{50%{opacity:.3}}
+@media (prefers-reduced-motion:reduce){.raw-standby-ribbon__dot{animation:none}}
+body[data-program-standby="true"] .raw-standby-ribbon{display:flex}
 .raw-seat-assign,.raw-seat-del { display:none !important; }
 
 /* ============================================================
@@ -2678,7 +2694,9 @@ body[data-program-standby="true"] #stage-overlay { opacity:0 !important; pointer
 /* Short laptops (e.g. 13" at 1280×800): reclaim vertical space so the topbar +
    toolbar + control desk don't crush the stage. */
 @media (min-width:901px) and (max-height:860px){
-  .program-panel .stage-aspect{ max-height:min(100%, calc(100vh - 250px))!important; }
+  /* audit 4.7: no max-height clamp (it would distort the now width-driven 16:9 box); the width
+     formula already shrinks with viewport height. Slightly tighter budget for the reduced chrome. */
+  .program-panel .stage-aspect{ width:min(100%, calc((100vh - 48px - 50px - 300px) * 16 / 9))!important; }
   .program-toolbar{ padding-block:8px; }
   .raw-desk{ margin-top:6px; }
 }

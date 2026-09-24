@@ -145,7 +145,7 @@ if(CREW){
   if(!names[SEAT]) location.replace('index.html?room='+encodeURIComponent(ROOM));
   NAME=names[SEAT]||'';els.nameInput.value=NAME;els.nameInput.readOnly=true;
   const field=document.createElement('div');field.className='field';
-  field.innerHTML='<label for="hostCode">Private host code</label><input id="hostCode" type="password" autocomplete="current-password" placeholder="Host access code">';
+  field.innerHTML='<label for="hostCode">Private host code</label><input id="hostCode" type="password" autocomplete="one-time-code" placeholder="Host access code">';   // audit 3.2: one-time-code stops the browser saving "RJ / <code>" and autofilling it into the console gate
   els.enterBtn.before(field);
   els.enterBtn.textContent='Reserve '+NAME+' seat and enter studio →';
   id('pfHint').textContent='Test your camera and microphone. Your seat is checked before you enter; another device cannot occupy it at the same time.';

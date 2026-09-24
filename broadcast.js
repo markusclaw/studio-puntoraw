@@ -7,6 +7,7 @@
    function button(text,fn){const b=document.createElement('button');b.type='button';b.className='raw-bcast-btn';b.textContent=text;b.addEventListener('click',fn);group.appendChild(b);return b;}
    const logo=button('Logo',()=>send({logo:!snapshot?.program.logo}));
    const standby=button('Standby',()=>send({standby:!snapshot?.program.standby}));
+   standby.classList.add('raw-bcast--warn');standby.title='Standby — cut the program to the branded hold screen (⌘⇧.)';   // audit 4.3: Standby is a show-breaker; make it read as one and surface the shortcut
    const session=button('Start session',()=>{if(snapshot?.program.session.live&&!confirm('End the Studio session? Stop recording and streaming separately in OBS.'))return;send({live:!snapshot?.program.session.live});});
    session.title='Session timer only. Start and stop the recording or stream in OBS.';
    const status=document.createElement('span');status.className='raw-desk__hint';group.appendChild(status);actions.appendChild(group);

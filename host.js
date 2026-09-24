@@ -130,6 +130,7 @@ function joinAs(name, code) {
 	render();
 }
 function leave() {
+ if(window.RawHost?.snapshot()?.program?.session?.live && !confirm('Leave the studio while the session is LIVE? Your seat and host control are released immediately.'))return;   // audit 4.4: guard a show-breaker
  window.rawHostCam?.stop();
  sessionStorage.removeItem("raw.host.autopub");
  window.__rawAutoEntering=false;
@@ -161,7 +162,7 @@ function connectSocket() {
     window.dispatchEvent(new CustomEvent('raw-room-state',{detail:e.detail})); render();
   });
   client.addEventListener('offline',()=>{runtime.connected=false;render();});   // audit 1.2: keep the camera publisher alive across a control-channel blip; it is torn down only on fatal/replaced or an explicit Leave
-  client.addEventListener('fatal',e=>{runtime.connected=false;runtime.name=null;window.rawHostCam?.stop(false);render();window.__rawAutoEntering=false;alert(e.detail);});
+  client.addEventListener('fatal',e=>{runtime.connected=false;runtime.name=null;window.rawHostCam?.stop(false);render();window.__rawAutoEntering=false;try{window.rawToast?window.rawToast(e.detail):console.warn('[raw] session ended:',e.detail);}catch(_){}});   // audit 4.6: alert() froze every timer mid-show — use the non-blocking toast
   client.addEventListener('error',e=>{window.dispatchEvent(new CustomEvent('raw-room-error',{detail:e.detail}));});
   client.connect();
 }
@@ -350,7 +351,7 @@ function buildUI() {
 			<label>Your name</label>
 			<input class="rj-name" type="text" maxlength="60" placeholder="e.g. Greg" autocomplete="off" />
 			<label>Crew code <span style="color:#6f685e">(optional)</span></label>
-			<input class="rj-code" type="password" maxlength="80" placeholder="Leave blank to join as guest" autocomplete="off" />
+			<input class="rj-code" type="password" maxlength="80" placeholder="Leave blank to join as guest" autocomplete="one-time-code" />
 			<div class="rj-hint">Crew can direct and hold the host badge. Guests join without control.</div>
 			<button type="submit"><span class="d"></span> Enter Studio</button>
 		</form>`;
@@ -411,7 +412,7 @@ function render() {
 		g.textContent = "Guest";
 		c.appendChild(g);
 	} else if (amHost()) {
-		const others = presentCrew().filter(m => m.id !== runtime.clientId);
+		const others = presentCrew().filter(m => m.id !== runtime.clientId && m.ready);   // audit 5: only offer to pass control to a ready crew member (the worker rejects an unready target anyway)
 		const sel = document.createElement("select");
 		sel.innerHTML = `<option value="">Pass host…</option>` +
 			others.map(m => `<option value="${escapeHtml(m.id)}">→ ${escapeHtml(m.name)}</option>`).join("");
@@ -437,8 +438,8 @@ function render() {
 	const leaveBtn = document.createElement("button");
 	leaveBtn.type = "button";
 	leaveBtn.className = "rh-leave";
-	leaveBtn.title = "Leave / switch identity";
-	leaveBtn.textContent = "⎋";
+	leaveBtn.title = "Leave the studio / switch identity";
+	leaveBtn.textContent = "⎋ Leave";   // audit 4.4: label the show-breaker in words, not a bare glyph
 	leaveBtn.addEventListener("click", leave);
 	c.appendChild(leaveBtn);
 

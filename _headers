@@ -4,7 +4,11 @@
 # browser sends an ETag and gets a 304 when nothing changed.
 /*
   Cache-Control: public, max-age=0, must-revalidate
+  Content-Security-Policy: frame-ancestors 'self'
+  X-Content-Type-Options: nosniff
 
+# audit 3.3: frame-ancestors 'self' lets the console embed program.html same-origin while blocking
+# external clickjacking embeds; OBS loads program.html top-level so it is unaffected.
 # Fonts/icons are fine to cache hard (their contents don't change under the same name).
 /lineawesome/*
   Cache-Control: public, max-age=31536000, immutable

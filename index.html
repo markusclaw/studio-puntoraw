@@ -132,13 +132,15 @@
 					<section class="stage-shell">
 						<div class="stage-aspect" id="stage" data-testid="stage-drop-target">
 							<iframe id="program-frame" title="Shared program" allow="autoplay" style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>
-						<iframe id="director-frame" title="VDO.Ninja program preview" allow="autoplay; camera; microphone; fullscreen; picture-in-picture; display-capture; screen-wake-lock; accelerometer; midi; geolocation; clipboard-write"></iframe>
+						<iframe id="director-frame" title="VDO.Ninja program preview" allow="autoplay; camera; microphone"></iframe>
 							<div id="stage-bg" class="stage-bg"></div>
 							<div id="stage-overlay" class="stage-overlay" aria-label="Layout editor surface"></div>
 							<div class="stage-empty" id="stage-empty">
 								<canvas id="static-canvas" class="static-canvas"></canvas>
 								<div class="stage-empty__text">NO SIGNAL</div>
 							</div>
+							<!-- audit 4.3: persistent operator alert while the program is on standby (CSS-driven by body[data-program-standby]) -->
+							<div class="raw-standby-ribbon" aria-hidden="true"><span class="raw-standby-ribbon__dot"></span>ON STANDBY</div>
 						</div>
 						<div class="box-inspector" id="box-inspector" data-empty="true" aria-label="Selected source controls">
 							<div class="box-inspector__summary">
@@ -234,7 +236,7 @@
 						<div class="panel-heading panel-heading--section">
 							<h2>Crew &amp; Guests</h2>
 							<div class="guest-actions">
-								<button type="button" id="toggle-join-sound" class="button button--secondary button--compact" aria-pressed="false">Sound Off</button>
+								<button type="button" id="toggle-join-sound" class="button button--secondary button--compact" aria-pressed="false">Join sound: Off</button>
 								<button type="button" id="add-samples" class="button button--secondary button--compact">Samples</button>
 								<button type="button" id="add-placeholder" class="icon-button" title="Add guest slot" aria-label="Add guest slot"><i class="las la-plus-square"></i></button>
 							</div>
@@ -267,7 +269,7 @@
 						</label>
 						<label class="check-row">
 							<input type="checkbox" id="brand-labels" checked autocomplete="off" />
-							<span>Show editor labels</span>
+							<span>On-air name labels</span>
 						</label>
 					</section>
 
@@ -802,7 +804,7 @@
       [['spotlight','Spotlight','solo'],['duo','Duo','duo'],['triple','Triple','triple']]
       .forEach(function(d){
         var b=document.createElement('button'); b.type='button'; b.className='raw-mode';
-        b.dataset.mode=d[0]; b.dataset.preset=d[2]; b.textContent=d[1]; b.setAttribute('aria-pressed', d[0]==='spotlight'?'true':'false');
+        b.dataset.mode=d[0]; b.dataset.preset=d[2]; b.textContent=d[1]; b.setAttribute('aria-pressed','false');   // audit 4.1: pressed state is derived from the room snapshot below, never hard-coded/optimistic
         b.addEventListener('click',function(){ setMode(d[0],d[2]); });
         wrap.appendChild(b);
       });
@@ -828,11 +830,24 @@
       var R=edgeRects(mode, items.length);
       sc.layout=items.map(function(it,i){return Object.assign({},it,{x:R[i].x,y:R[i].y,w:R[i].w,h:R[i].h,z:i+1,cover:true});});
       if(app.activateScene) app.activateScene(sc.id);
-      var btns=document.querySelectorAll('.raw-mode');
-      for(var i=0;i<btns.length;i++){ btns[i].setAttribute('aria-pressed', btns[i].dataset.mode===mode?'true':'false'); }
+      // audit 4.1: no optimistic press — the snapshot listener below reflects the acknowledged room.
     }
     window.rawSetMode=setMode;
 
+    // audit 4.1: derive the pressed mode purely from the acknowledged room layout (box count + the
+    // full-height edge-column shapes setMode produces). Any other preset (grid/pip/…) → none pressed.
+    function modeFromLayout(layout){
+      if(!layout || !layout.length || layout.length>3) return null;
+      var n=layout.length, R=edgeRects(n===2?'duo':n===3?'triple':'spotlight', n);
+      var match=layout.every(function(b,i){ return R[i] && Math.abs(b.x-R[i].x)<1 && Math.abs(b.y-R[i].y)<1 && Math.abs(b.w-R[i].w)<1 && Math.abs(b.h-R[i].h)<1; });
+      return match ? (n===1?'spotlight':n===2?'duo':'triple') : null;
+    }
+    window.addEventListener('raw-program-rendered', function(e){
+      var st=e.detail && e.detail.program; if(!st) return;
+      var sc=(st.scenes||[]).find(function(s){return s.id===st.activeSceneId;});
+      var mode=modeFromLayout(sc && sc.layout);
+      document.querySelectorAll('.raw-mode').forEach(function(b){ b.setAttribute('aria-pressed', b.dataset.mode===mode?'true':'false'); });
+    });
   });
 })();
 </script>
@@ -845,6 +860,7 @@
     if(!strip) return;
     strip.addEventListener('click', function(e){
       if(!e.target.closest('.layout-preset')) return;
+      if(!window.rawCanControl || !window.rawCanControl()) return;   // audit 5: only the controller mutates the layout
       try{ var app=window.studioApp; if(app&&app.state){ var st=app.state;
         var sc=(st.scenes||[]).find(function(s){return s.id===st.activeSceneId;})||st.scenes[0];
         if(sc){ sc.auto=false; sc.layout=[]; } } }catch(_){}

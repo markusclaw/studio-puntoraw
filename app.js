@@ -18,7 +18,7 @@ const joinSoundButton = document.getElementById("toggle-join-sound");
 const toast = document.getElementById("toast");
 
 const params = new URLSearchParams(window.location.search);
-const DEFAULT_POLL_MS = 1400;
+const DEFAULT_POLL_MS = 4000;   // audit 2.7: VDO pushes guest-connected/view-connection/slot-updated which each trigger an immediate refresh, so the periodic poll can be much slower (was 1400ms)
 const REQUEST_TIMEOUT_MS = 3500;
 const STORAGE_PREFIX = "studio.session.";
 const JOIN_SOUND_STORAGE_KEY = "studio.joinSound";
@@ -150,14 +150,19 @@ const memberGoneSince={}; // streamID -> first time its member went missing (gra
 function receiveRoom(snapshot,opts){
  const old=roomSnapshot;
  roomSnapshot=snapshot;
+ const p=snapshot.program;
+ document.body.dataset.programStandby=p.standby?'true':'false';   // lightweight, must run for every snapshot (incl. mix/standby-only) so the console's overlay-hide tracks standby even when the heavy renderAll below is skipped
  if(pendingDraft && JSON.stringify({scenes:snapshot.program.scenes,activeSceneId:snapshot.program.activeSceneId,brand:snapshot.program.brand})===JSON.stringify(pendingDraft)) pendingDraft=null;   // audit 1.7: our edit landed, stop tracking it
  const sig=x=>JSON.stringify(x.members.map(m=>[m.id,m.slot,m.streamID,m.admitted,m.ready]));
  const membersChanged=!old||sig(old)!==sig(snapshot);
- if(!opts?.force && old && old.program.revision===snapshot.program.revision && !membersChanged)return;   // audit 1.7: force bypasses the early-return so a rejected write re-renders back to the room
+ // audit 2.5: mix/standby/logo/master changes bump program.revision but don't change the layout;
+ // desk.js, broadcast.js and program.js each read the snapshot on raw-room-state themselves, so the
+ // heavy console renderAll only needs to run when the layout, brand or membership actually changed.
+ const layoutKey=x=>JSON.stringify({s:x.program.scenes,a:x.program.activeSceneId,b:x.program.brand});
+ const layoutChanged=!old||layoutKey(old)!==layoutKey(snapshot);
+ if(!opts?.force && old && !layoutChanged && !membersChanged)return;   // audit 1.7: force bypasses the early return so a rejected write re-renders back to the room
  remoteRender=true;programPending=false;
  clearTimeout(state.saveTimer);
- const p=snapshot.program;
- document.body.dataset.programStandby=p.standby?'true':'false';   // console hides its layout-box grid over the program frame while standby is live, so the preview matches the clean OBS takeover
  state.scenes=clone(p.scenes);state.activeSceneId=p.activeSceneId;state.brand=clone(p.brand);
  state.lastAppliedSceneId=p.activeSceneId;
  state.placeholders=[{seat:'rj',name:'RJ',slot:1},{seat:'greg',name:'Greg',slot:2},{seat:'rafa',name:'Rafa',slot:3},...snapshot.members.filter(m=>m.role==='guest'&&m.admitted)].map(m=>({streamID:m.seat?'seat_'+m.seat:'guest_'+m.id,label:m.name,slot:m.slot,host:!!m.seat,placeholder:true}));
@@ -289,6 +294,7 @@ function showToast(message) {
 		toast.dataset.show = "false";
 	}, 1800);
 }
+window.rawToast = showToast;   // audit 4.5/4.6: let host.js/hostcam.js surface feedback through the same toast
 
 function setStatus(text, mode = "idle") {
 	connectionStatus.textContent = text;
@@ -395,15 +401,17 @@ function handleFrameMessage(event) {
 		return;
 	}
 	const data = event.data;
+	let consumedDetailedState = false;
 	if (data.cib && state.pendingRequests.has(data.cib)) {
 		const pending = state.pendingRequests.get(data.cib);
 		if (pending.responseKey in data) {
 			clearTimeout(pending.timeout);
 			state.pendingRequests.delete(data.cib);
 			pending.resolve(data[pending.responseKey]);
+			if (pending.responseKey === "detailedState") consumedDetailedState = true;   // audit 2.7: refreshState's resolve already runs applyDetailedState; don't apply it a second time below
 		}
 	}
-	if (data.detailedState) {
+	if (data.detailedState && !consumedDetailedState) {
 		applyDetailedState(data.detailedState);
 	}
 	if (data.action === "image-frame-capture" && data.value) {
@@ -1169,6 +1177,7 @@ function normalizeSceneZ(scene) {
 }
 
 function moveSelectedBoxLayer(direction) {
+	if (!window.rawCanControl?.()) return;   // audit 5: standby/observer consoles must not mutate program state locally
 	const scene = getActiveScene();
 	const item = getSelectedLayoutItem();
 	if (!scene || !item || scene.layout.length < 2) {
@@ -1189,6 +1198,7 @@ function moveSelectedBoxLayer(direction) {
 }
 
 function toggleSelectedBoxFit() {
+	if (!window.rawCanControl?.()) return;   // audit 5
 	const item = getSelectedLayoutItem();
 	if (!item) {
 		return;
@@ -1198,6 +1208,7 @@ function toggleSelectedBoxFit() {
 }
 
 function resetSelectedBox() {
+	if (!window.rawCanControl?.()) return;   // audit 5
 	const item = getSelectedLayoutItem();
 	if (!item) {
 		return;
@@ -1210,6 +1221,7 @@ function resetSelectedBox() {
 }
 
 function renameActiveScene() {
+	if (!window.rawCanControl?.()) return;   // audit 5
 	const scene = getActiveScene();
 	if (!scene) {
 		return;
@@ -1339,6 +1351,7 @@ function moveActiveScene(direction) {
 }
 
 function addScene() {
+	if (!window.rawCanControl?.()) return;   // audit 5
 	clearPendingSceneDelete(false);
 	const active = getActiveScene();
 	const scene = active
@@ -1501,6 +1514,7 @@ function assignSourceToLayoutItem(sourceId, targetBoxId) {
 }
 
 function soloSource(sourceId) {
+	if (!window.rawCanControl?.()) return;   // audit 5
 	const source = getSourceById(sourceId);
 	if (!source) {
 		return;
@@ -1953,7 +1967,7 @@ function renderJoinSoundButton() {
 	if (!joinSoundButton) {
 		return;
 	}
-	joinSoundButton.textContent = state.joinSound ? "Sound On" : "Sound Off";
+	joinSoundButton.textContent = state.joinSound ? "Join sound: On" : "Join sound: Off";   // audit 4.8: reads as a status, not a command
 	joinSoundButton.setAttribute("aria-pressed", state.joinSound ? "true" : "false");
 	joinSoundButton.title = state.joinSound ? "Disable guest join sound" : "Enable guest join sound";
 }
@@ -2014,6 +2028,7 @@ function clamp(value, min, max) {
 }
 
 function addPlaceholder() {
+	if (!window.rawCanControl?.()) return;   // audit 5
 	const nextSlot = getNextSlot();
 	const placeholder = {
 		streamID: createId("placeholder"),
@@ -2057,6 +2072,7 @@ function addSampleSources() {
 }
 
 function updateActiveBrand() {
+	if (!window.rawCanControl?.()) return;   // audit 5
 	state.brand.background = document.getElementById("brand-background").value;
 	state.brand.radius = parseInt(document.getElementById("brand-radius").value, 10) || 0;
 	state.brand.labels = document.getElementById("brand-labels").checked;
@@ -2137,6 +2153,19 @@ function bindEvents() {
 		state.thumbnailTimer = setInterval(requestSourceThumbnails, THUMBNAIL_REFRESH_MS);
 	});
 	window.addEventListener("message", handleFrameMessage);
+	// audit 2.7: pause the console's polling + thumbnail capture while the tab is hidden (a
+	// backgrounded operator console needn't drive the director iframe). Resume + refresh on show.
+	// This is the CONSOLE only — the OBS program page (program.js) has no such listener and never pauses.
+	document.addEventListener("visibilitychange", () => {
+		if (document.hidden) {
+			clearInterval(state.pollTimer); clearInterval(state.thumbnailTimer);
+			state.pollTimer = null; state.thumbnailTimer = null;
+		} else if (state.iframeReady && !state.pollTimer) {
+			refreshState();
+			state.pollTimer = setInterval(refreshState, DEFAULT_POLL_MS);
+			state.thumbnailTimer = setInterval(requestSourceThumbnails, THUMBNAIL_REFRESH_MS);
+		}
+	});
 	window.addEventListener("beforeunload", () => {
 		clearInterval(state.pollTimer);
 		clearInterval(state.thumbnailTimer);
