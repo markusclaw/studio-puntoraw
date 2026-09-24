@@ -2,8 +2,20 @@
 (function(){
  function ready(){
    const panel=document.querySelector('.program-panel'),stage=panel?.querySelector('.stage-shell');if(!stage)return;
-   const desk=document.createElement('section');desk.className='raw-desk';desk.innerHTML='<div class="raw-desk__head"><span class="raw-desk__title">CONTROL DESK</span><span class="raw-desk__hint">Program levels · OBS shared feed</span></div><div class="raw-desk__rack"></div>';stage.after(desk);
+   const desk=document.createElement('section');desk.className='raw-desk';desk.innerHTML='<div class="raw-desk__head"><span class="raw-desk__title">CONTROL DESK</span><span class="raw-desk__hint">Program levels · OBS shared feed</span><button type="button" class="raw-desk__toggle" aria-label="Collapse the control desk">▾</button></div><div class="raw-desk__rack"></div>';stage.after(desk);
    const rack=desk.querySelector('.raw-desk__rack');let sig='',snapshot=null;
+   // Collapsible desk: on compact/short laptops nest the mixer so the stage keeps the
+   // height. Click the header to toggle; the choice is remembered per browser. Default
+   // collapsed on compact screens unless the operator has set a preference.
+   (function(){
+     const head=desk.querySelector('.raw-desk__head'),tog=desk.querySelector('.raw-desk__toggle');
+     const compact=window.matchMedia('(max-width:1440px), (max-height:860px)').matches;
+     let saved=null; try{saved=localStorage.getItem('raw.ui.desk');}catch(e){}
+     const set=c=>{desk.dataset.collapsed=c?'true':'false';tog.textContent=c?'▸':'▾';tog.setAttribute('aria-expanded',String(!c));};
+     set(saved==null ? compact : saved==='1');
+     head.style.cursor='pointer';
+     head.addEventListener('click',()=>{const c=desk.dataset.collapsed!=='true';set(c);try{localStorage.setItem('raw.ui.desk',c?'1':'0');}catch(e){}});
+   })();
    // Approx program VU: peak input level across unmuted contributing channels (not a measured output tap).
    function programLevel(){if(!snapshot||snapshot.program.masterMuted)return 0;let peak=0;for(const m of (snapshot.members||[])){if(m.role!=='crew'&&!m.admitted)continue;const mx=snapshot.program.mix[String(m.slot)];if(mx&&mx.muted)continue;const s=window.studioApp?.state.sources.get(m.streamID);if(s&&!s.disconnected)peak=Math.max(peak,s.loudness||0);}return Math.min(100,peak);}
    function channels(){return [{slot:1,name:'RJ'},{slot:2,name:'Greg'},{slot:3,name:'Rafa'},...(snapshot?.members||[]).filter(m=>m.role==='guest'&&m.admitted).map(m=>({slot:m.slot,name:m.name})),{slot:'master',name:'MASTER'}];}
