@@ -23,7 +23,7 @@ export class RawStudioRoom extends DurableObject {
   }
   attachments(exclude) { return this.ctx.getWebSockets().filter(w=>w!==exclude).map(w=>({ws:w,...w.deserializeAttachment()})).filter(a=>a.id && !a.closed && Date.now()-a.lastSeen<PRESENCE_MS); }
   members(exclude) {
-    return this.attachments(exclude).filter(a=>a.role!=='viewer').map(({ws,token,...a})=>({...a, admitted:a.role==='crew'||!!this.guests[a.id]?.admitted}));
+    return this.attachments(exclude).filter(a=>a.role!=='viewer').map(({ws,token,...a})=>({...a, admitted:a.role==='crew'||!!this.guests[a.id]?.admitted, denied:!!this.guests[a.id]?.denied}));   // audit 4.6: denied is distinct from not-yet-admitted so the greenroom can say "not admitted"
   }
   // Durable projection of room state: only fields that must survive a restart. Roll-only
   // fields (badge.expiresAt, guest.seenAt, seat.until) are omitted so they never drive writes.
@@ -31,7 +31,7 @@ export class RawStudioRoom extends DurableObject {
     return {
       'program-v2':this.program,
       'badge-v2':{hostId:this.badge.hostId,term:this.badge.term},
-      'guests-v2':Object.fromEntries(Object.entries(this.guests).map(([k,g])=>[k,{token:g.token,slot:g.slot,streamID:g.streamID,admitted:!!g.admitted}])),
+      'guests-v2':Object.fromEntries(Object.entries(this.guests).map(([k,g])=>[k,{token:g.token,slot:g.slot,streamID:g.streamID,admitted:!!g.admitted,denied:!!g.denied}])),
       'seats-v2':Object.fromEntries(Object.entries(this.seats).map(([k,s])=>[k,{id:s.id,token:s.token,streamID:s.streamID}]))
     };
   }
@@ -143,7 +143,7 @@ export class RawStudioRoom extends DurableObject {
       this.badge={hostId:m.target,term:this.badge.term+1,expiresAt:Date.now()+LEASE_MS};
     } else if(m.type==='admit'||m.type==='deny') {
       if(!owns || !Object.hasOwn(this.guests,m.target)) return this.error(ws,'forbidden','Only the controller can admit or remove a guest.');   // audit 3.3: own-property check so a target like "__proto__" can't resolve to an inherited value
-      this.guests[m.target].admitted=m.type==='admit';
+      { const g=this.guests[m.target]; g.admitted=m.type==='admit'; g.denied=m.type==='deny'; }   // audit 4.6: track denied so a removed/denied guest shows "not admitted", not "waiting"
     } else if(m.type==='program') {
       if(!owns) return this.error(ws,'forbidden','Control changed. Your change was not applied.');
       if(m.revision!==this.program.revision) { this.send(ws,this.stateMsg()); return this.error(ws,'conflict','The room changed. Retry your change.'); }
