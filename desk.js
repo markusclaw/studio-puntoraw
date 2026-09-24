@@ -37,7 +37,9 @@
      const can=window.rawCanControl();for(const strip of rack.children){const slot=strip.dataset.slot,master=slot==='master',mix=master?{gain:snapshot.program.master,muted:snapshot.program.masterMuted}:(snapshot.program.mix[slot]||{gain:100,muted:false});
        const f=strip.querySelector('input');if(document.activeElement!==f)f.value=mix.gain;f.disabled=!can;const b=strip.querySelector('button');b.disabled=!can;b.classList.toggle('on',mix.muted);b.setAttribute('aria-pressed',String(mix.muted));
        const member=snapshot.members.find(m=>m.slot===+slot),src=member&&window.studioApp?.state.sources.get(member.streamID);
-       strip.querySelector('.raw-strip__state').textContent=master?'Program':mix.muted?'Program muted':src&&!src.disconnected?'Connected':'Waiting for media';
+       // audit 4.2: the strip shows the same canonical seat state as the card/tile/pill.
+       const seat=window.RawSeat&&window.RawSeat.compute({present:!!member,reconnecting:src?.disconnected,cam:src?!src.videoMuted:false,live:!!(src&&!src.disconnected&&!src.videoMuted)});
+       strip.querySelector('.raw-strip__state').textContent=master?'Program':mix.muted?'Muted':(seat?seat.short:(src&&!src.disconnected?'LIVE':'ABSENT'));
        strip.querySelector('.raw-vu__fill').style.height=(master?programLevel():Math.min(100,src?.loudness||0))+'%';
      }
    }

@@ -108,7 +108,7 @@
      if(streamID){
        if(tile.dropTimer){clearTimeout(tile.dropTimer);tile.dropTimer=null;}
        if(tile.streamID!==streamID) mountView(tile,box,streamID);
-       tile.wait.textContent='CONNECTING MEDIA';
+       tile.wait.textContent='CONNECTING';   // audit 4.2: shared vocabulary
      } else {
        // presence blip: keep the live iframe through a short grace so a reconnecting host doesn't black out on air; same seat returns with the same streamID (seamless). Sustained absence tears it down.
        if(tile.frame && !tile.dropTimer){
@@ -142,7 +142,7 @@
        const reason=stalled?'stalled':'no-first-frame';
        tile.remountCount=(tile.remountCount||0)+1;
        console.info('[program] remount',tile.streamID,reason,'#'+tile.remountCount);
-       tile.wait.textContent=stalled?'RECONNECTING':'WAITING FOR CAMERA';
+       tile.wait.textContent=stalled?'RECONNECTING':'NO CAMERA';   // audit 4.2: shared vocabulary
        mountView(tile,tile.box,tile.streamID);
      }
    }

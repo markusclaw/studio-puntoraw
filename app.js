@@ -435,8 +435,7 @@ async function refreshState() {
 	try {
 		const detailedState = await frameRequest({ getDetailedState: true }, "detailedState");
 		applyDetailedState(detailedState);
-		const liveCount = getLiveSourceCount();
-		setStatus(liveCount ? `${liveCount} source${liveCount === 1 ? "" : "s"}` : "Ready", "live");
+		setStatus(camSummary(), "live");   // audit 4.2: one vocabulary — the pill counts live host cameras
 	} catch (error) {
 		setStatus("Reconnecting", "idle");
 	}
@@ -450,6 +449,29 @@ function getLiveSourceCount() {
 		}
 	}
 	return count;
+}
+
+// audit 4.2: canonical per-seat state for a source card / desk strip, via the shared vocabulary.
+function sourceSeatState(source, isPlaceholder) {
+	if (isPlaceholder || !source) return window.RawSeat.compute({ present: false });
+	if (source.queued) return window.RawSeat.states.connecting;
+	return window.RawSeat.compute({
+		present: true,
+		reconnecting: !!source.disconnected,
+		cam: !source.videoMuted,
+		live: !source.disconnected && !source.videoMuted
+	});
+}
+
+// audit 4.2: the connection pill counts live host cameras out of the three host seats ("2/3 CAMS").
+function camSummary() {
+	let live = 0;
+	for (let slot = 1; slot <= 3; slot++) {
+		for (const s of state.sources.values()) {
+			if (s.slot === slot && !s.disconnected && !s.videoMuted && !s.queued) { live++; break; }
+		}
+	}
+	return `${live}/3 CAMS`;
 }
 
 function applyDetailedState(detailedState) {
@@ -843,13 +865,17 @@ function renderSources() {
 		slot.textContent = source.slot ? `Slot ${source.slot}` : "Manual";
 		header.append(name, slot);
 
+		// audit 4.2: role/placement in meta; canonical connection state (LIVE / NO CAM / RECONNECTING /
+		// CONNECTING / ABSENT) as the prominent state line, coloured by data-state.
+		const seat = sourceSeatState(source, isPlaceholder);
 		const meta = document.createElement("div");
 		meta.className = "source-card__meta";
-		meta.textContent = isPlaceholder ? (source.sample ? "Sample test asset" : "Reserved guest slot") : `${source.slot<=3 ? "Host" : "Guest"}${source.disconnected ? " / reconnecting" : source.videoMuted ? " / camera off" : " / connected"}`;
+		meta.textContent = isPlaceholder ? (source.sample ? "Sample test asset" : "Reserved guest slot") : `${source.slot<=3 ? "Host" : "Guest"} · ${onStage ? "On stage" : "Backstage"}`;
 
 		const sourceState = document.createElement("div");
 		sourceState.className = "source-card__state";
-		sourceState.textContent = source.disconnected ? (onStage ? "Disconnected on stage" : "Disconnected") : source.queued ? "Waiting for activation" : isPlaceholder ? (source.sample ? (onStage ? "Sample on stage" : "Drag test asset") : onStage ? "Reserved on stage" : "Waiting for guest") : onStage ? "On stage" : "Backstage";
+		sourceState.dataset.state = seat.key;
+		sourceState.textContent = (isPlaceholder && source.sample) ? (onStage ? "Sample on stage" : "Drag test asset") : (seat.key === "absent" ? (isPlaceholder && source.slot > 3 ? "ABSENT · waiting for guest" : "ABSENT") : `${seat.label}${onStage ? " · On stage" : ""}`);
 
 		const actions = document.createElement("div");
 		actions.className = "source-card__actions";
