@@ -277,7 +277,7 @@ function enter(){
     if(me?.admitted){startCamera(me);els.statusT.textContent="You're in the studio";els.statusS.textContent='You can talk with the hosts. The controller selects when you appear in the program.';els.pip.className='pip live';}
     else {stopPublisher();els.statusT.textContent='Waiting for admission';els.statusS.textContent='Your camera and microphone are not being sent to the studio.';els.pip.className='pip wait';}
   });
-  client.addEventListener('offline',()=>{stopPublisher();els.statusT.textContent='Reconnecting…';els.statusS.textContent='Publishing paused until your admission is confirmed.';});
+  client.addEventListener('offline',()=>{els.statusT.textContent='Reconnecting…';els.statusS.textContent='Camera stays live; reconnecting to the room…';});   // audit 1.2: keep the guest camera publishing across a control-channel blip; it is torn down only on fatal or when leaving
   client.addEventListener('fatal',e=>{stopPublisher();confirmed=false;els.enterBtn.disabled=false;els.preflight.classList.remove('hidden');id('pfHint').textContent=e.detail;});
   client.connect();
 }

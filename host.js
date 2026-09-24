@@ -134,9 +134,10 @@ function leave() {
  sessionStorage.removeItem("raw.host.autopub");
  window.__rawAutoEntering=false;
 	clearIdentity();
+	try{ sessionStorage.removeItem("raw.host.seat"); }catch(e){}   // audit 1.3: a real Leave must clear the seat so the next load shows the chooser, not an auto-rejoin
 	runtime.name = null;
 	runtime.code = "";
-	closeSocket();
+	closeSocket(true);   // real Leave releases the seat + badge immediately
 	clearInterval(runtime.heartbeatTimer);
 	clearInterval(runtime.reconcileTimer);
 	runtime.localPresence.clear();
@@ -154,17 +155,17 @@ function connectSocket() {
   let seat=''; try{seat=sessionStorage.getItem('raw.host.seat')||'';}catch{}
   const client=new window.RawRoomClient(room,{...session,name:runtime.name,seat,code:runtime.code,ready:true});
   runtime.client=client; runtime.clientId=session.id;
-  client.addEventListener('joined',()=>{runtime.connected=true;render();});
+  client.addEventListener('joined',()=>{runtime.connected=true;window.__rawAutoEntering=false;render();});
   client.addEventListener('state',e=>{
     runtime.connected=client.joined; runtime.badge=e.detail.badge; runtime.members=e.detail.members;
     window.dispatchEvent(new CustomEvent('raw-room-state',{detail:e.detail})); render();
   });
-  client.addEventListener('offline',()=>{runtime.connected=false;window.rawHostCam?.stop(false);render();});
+  client.addEventListener('offline',()=>{runtime.connected=false;render();});   // audit 1.2: keep the camera publisher alive across a control-channel blip; it is torn down only on fatal/replaced or an explicit Leave
   client.addEventListener('fatal',e=>{runtime.connected=false;runtime.name=null;window.rawHostCam?.stop(false);render();window.__rawAutoEntering=false;alert(e.detail);});
   client.addEventListener('error',e=>{window.dispatchEvent(new CustomEvent('raw-room-error',{detail:e.detail}));});
   client.connect();
 }
-function closeSocket(){ runtime.client?.close(true);runtime.client=null;runtime.connected=false; }
+function closeSocket(sendLeave=false){ runtime.client?.close(sendLeave);runtime.client=null;runtime.connected=false; }   // audit 1.3: only an explicit Leave sends `leave`; a refresh/tab-close closes silently so the seat + badge survive
 function scheduleReconnect() {} // RawRoomClient owns bounded reconnects.
 
 /* ========================================================================
@@ -491,16 +492,30 @@ function init() {
 	injectStyles();
 	buildUI();
 
-	// Auto-rejoin disabled: the Jump In chooser is the entry point, so we
-	// always show the seat picker and never silently rejoin a stale
-	// identity (which could redirect a guest to the greenroom on load).
+	// Auto-rejoin (audit 1.3): a crew member who saved their identity + seat this session
+	// (i.e. came through the greenroom) rejoins directly and resumes publishing on a refresh,
+	// instead of chooser → greenroom → retype code. __rawAutoEntering keeps the chooser from
+	// flashing during the rejoin; the camera resumes via the persisted raw.host.autopub flag
+	// that hostcam.js reads on load. Guests (no saved seat) still use the chooser.
+	let __savedSeat=''; try{ __savedSeat=sessionStorage.getItem("raw.host.seat")||""; }catch(e){}
+	const __savedId=loadIdentity();
+	if (runtime.mode === "server" && __savedId && __savedId.name && __savedSeat) {
+		window.__rawAutoEntering = true;
+		runtime.name = __savedId.name;
+		runtime.code = __savedId.code || "";
+		runtime.joinedAt = now();
+		startTransport();
+	}
 	render();
 
+	// audit 1.3: a refresh/tab-close must NOT send `leave` — that would release the seat and
+	// jump the controller badge. Close the socket silently; the 30s reservation (keyed by
+	// id/token) plus the worker lease-hold (1.4) let the same tab return to air in seconds.
 	window.addEventListener("beforeunload", () => {
 		clearInterval(runtime.heartbeatTimer);
 		clearInterval(runtime.reconcileTimer);
 		clearTimeout(runtime.reconnectTimer);
-		closeSocket();
+		closeSocket(false);
 	});
 
 	window.RawHost = {

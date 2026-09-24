@@ -137,22 +137,23 @@ function loadSession() {
  state.activeSceneId='main';state.placeholders=[];
 }
 
-let roomSnapshot=null, remoteRender=false, programPending=false;
+let roomSnapshot=null, remoteRender=false, programPending=false, pendingDraft=null;
 function programDraft(){return {scenes:state.scenes,activeSceneId:state.activeSceneId,brand:state.brand};}
 function publishProgram(){
  if(remoteRender || !window.rawCanControl?.() || !roomSnapshot)return;
  const draft=JSON.parse(JSON.stringify(programDraft()));
  if(JSON.stringify(draft)===JSON.stringify({scenes:roomSnapshot.program.scenes,activeSceneId:roomSnapshot.program.activeSceneId,brand:roomSnapshot.program.brand}))return;
- programPending=true;
+ programPending=true;pendingDraft=draft;   // audit 1.7: remember our edit so a conflict can re-send it on the new revision instead of dropping it
  window.RawHost.send({type:'program',revision:roomSnapshot.program.revision,program:draft});
 }
 const memberGoneSince={}; // streamID -> first time its member went missing (grace window)
-function receiveRoom(snapshot){
+function receiveRoom(snapshot,opts){
  const old=roomSnapshot;
  roomSnapshot=snapshot;
+ if(pendingDraft && JSON.stringify({scenes:snapshot.program.scenes,activeSceneId:snapshot.program.activeSceneId,brand:snapshot.program.brand})===JSON.stringify(pendingDraft)) pendingDraft=null;   // audit 1.7: our edit landed, stop tracking it
  const sig=x=>JSON.stringify(x.members.map(m=>[m.id,m.slot,m.streamID,m.admitted,m.ready]));
  const membersChanged=!old||sig(old)!==sig(snapshot);
- if(old && old.program.revision===snapshot.program.revision && !membersChanged)return;
+ if(!opts?.force && old && old.program.revision===snapshot.program.revision && !membersChanged)return;   // audit 1.7: force bypasses the early-return so a rejected write re-renders back to the room
  remoteRender=true;programPending=false;
  clearTimeout(state.saveTimer);
  const p=snapshot.program;
@@ -171,7 +172,18 @@ function receiveRoom(snapshot){
  window.dispatchEvent(new CustomEvent('raw-program-rendered',{detail:snapshot}));
 }
 window.addEventListener('raw-room-state',e=>receiveRoom(e.detail));
-window.addEventListener('raw-room-error',e=>{programPending=false;if(roomSnapshot)receiveRoom(roomSnapshot);showToast(e.detail.message);});
+window.addEventListener('raw-room-error',e=>{
+ programPending=false;
+ if(e.detail.code==='conflict' && pendingDraft && roomSnapshot){
+   // audit 1.7: our edit raced a newer revision — re-apply our draft and re-send it on top instead of dropping the edit
+   state.scenes=clone(pendingDraft.scenes);state.activeSceneId=pendingDraft.activeSceneId;state.brand=clone(pendingDraft.brand);
+   renderAll();publishProgram();
+ } else if(roomSnapshot){
+   // rejected (forbidden/invalid): snap the local stage back to the acknowledged program so it never shows a rejected layout
+   pendingDraft=null;receiveRoom(roomSnapshot,{force:true});
+ }
+ showToast(e.detail.message);
+});
 
 function normalizeTemplateScene(scene, index) {
 	const name =

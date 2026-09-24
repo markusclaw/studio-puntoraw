@@ -3,15 +3,18 @@
  const p=new URLSearchParams(location.search),room=p.get('room')||'master_sessions_raw',monitor=p.has('monitor');
  const client=new RawRoomClient(room,{id:crypto.randomUUID(),token:crypto.randomUUID(),viewer:true});
  const container=document.getElementById('program'),standby=document.getElementById('standby'),message=document.getElementById('standby-message');
- const tiles=new Map();let snapshot=null,offline=true,solo=null;
+ const tiles=new Map();let snapshot=null,offline=true,solo=null,interrupted=false,fatalMsg='',offlineTimer=null;
  // Watchdog thresholds. A viewer that never produces a first frame, or whose decoded-frame
  // counter stalls, is silently reconnected by rebuilding its iframe — VDO keeps the same
  // streamID across publisher blips, so nothing else would ever recover a frozen tile.
- const FIRST_FRAME_MS=12000, STALL_MS=7000, REMOUNT_COOLDOWN_MS=15000;
+ // DROP_GRACE_MS (audit 1.2): keep a live tile through a control-channel blip ~= PRESENCE_MS,
+ // so a reconnecting host doesn't black out on air. OFFLINE_CARD_MS (audit 1.1): the console
+ // monitor waits this long before showing an interruption card; OBS never shows one.
+ const FIRST_FRAME_MS=12000, STALL_MS=7000, REMOUNT_COOLDOWN_MS=15000, DROP_GRACE_MS=25000, OFFLINE_CARD_MS=20000;
  function volume(tile){
    if(!tile.frame||!snapshot)return;
    const mix=snapshot.program.mix[String(tile.slot)]||{gain:100,muted:false};
-   const muted=monitor || offline || snapshot.program.standby || snapshot.program.masterMuted || mix.muted;
+   const muted=monitor || snapshot.program.standby || snapshot.program.masterMuted || mix.muted;   // audit 1.1: a control-channel blip must NOT mute the OBS output — the VDO P2P media is unaffected
    const gain=muted?0:(mix.gain/100)*(snapshot.program.master/100);
    tile.frame.contentWindow?.postMessage({volume:gain},'https://vdo.ninja');
    tile.frame.contentWindow?.postMessage({mute:muted},'https://vdo.ninja');
@@ -54,7 +57,7 @@
    const program=snapshot.program,scene=program.scenes.find(s=>s.id===program.activeSceneId),keep=new Set();
    document.body.style.background=program.brand.background;
    for(const box of scene?.layout||[]){
-     const key=box.id;keep.add(key);let tile=tiles.get(key);
+     const key=box.slot;keep.add(key);let tile=tiles.get(key);   // audit 1.5: key tiles by SLOT (stable) not box.id (regenerated on every layout switch) so mode changes restyle in place instead of remounting the VDO iframe
      if(!tile){const el=document.createElement('div');el.className='tile';const wait=document.createElement('div');wait.className='waiting';const name=document.createElement('div');name.className='name';el.append(wait,name);container.appendChild(el);tile={el,wait,name,frame:null,streamID:null};tiles.set(key,tile);}
      tile.slot=box.slot+1;tile.box=box;
      Object.assign(tile.el.style,{left:box.x+'%',top:box.y+'%',width:box.w+'%',height:box.h+'%',zIndex:box.z,borderRadius:program.brand.radius+'px'});
@@ -68,13 +71,14 @@
      } else {
        // presence blip: keep the live iframe through a short grace so a reconnecting host doesn't black out on air; same seat returns with the same streamID (seamless). Sustained absence tears it down.
        if(tile.frame && !tile.dropTimer){
-         tile.dropTimer=setTimeout(()=>{tile.frame?.remove();tile.frame=null;tile.streamID=null;tile.dropTimer=null;tile.wait.textContent='WAITING FOR '+tile.name.textContent.toUpperCase();},6000);
+         tile.dropTimer=setTimeout(()=>{tile.frame?.remove();tile.frame=null;tile.streamID=null;tile.dropTimer=null;tile.wait.textContent='WAITING FOR '+tile.name.textContent.toUpperCase();},DROP_GRACE_MS);
        } else if(!tile.frame){ tile.streamID=null;tile.wait.textContent='WAITING FOR '+tile.name.textContent.toUpperCase(); }
      }
      volume(tile);
    }
    for(const [key,tile] of tiles)if(!keep.has(key)){if(tile.dropTimer)clearTimeout(tile.dropTimer);tile.el.remove();tiles.delete(key);}
-   standby.hidden=!offline&&!program.standby;message.textContent=offline?'Studio connection interrupted':'Be right back';document.getElementById('logo').hidden=!program.logo;
+   const holdVisible=program.standby||!!fatalMsg||(interrupted&&monitor);   // audit 1.1: OBS (!monitor) shows the hold only for a real standby/fatal, never a transient control blip
+   standby.hidden=!holdVisible;message.textContent=fatalMsg||(program.standby?'Be right back':'Studio connection interrupted');document.getElementById('logo').hidden=!program.logo;
  }
  // Liveness watchdog: poll each live tile for stats, and rebuild any iframe that never
  // produced a first frame or whose frame counter has stalled while its member is still on
@@ -90,9 +94,9 @@
      if(noFirstFrame||stalled){ tile.wait.textContent=stalled?'RECONNECTING':'WAITING FOR CAMERA'; mountView(tile,tile.box,tile.streamID); }
    }
  }
- client.addEventListener('state',e=>{snapshot=e.detail;offline=false;render();});
- client.addEventListener('offline',()=>{offline=true;render();});
- client.addEventListener('fatal',e=>{offline=true;render();message.textContent=e.detail;});
+ client.addEventListener('state',e=>{snapshot=e.detail;offline=false;interrupted=false;fatalMsg='';clearTimeout(offlineTimer);offlineTimer=null;render();});
+ client.addEventListener('offline',()=>{offline=true;if(monitor&&!offlineTimer)offlineTimer=setTimeout(()=>{interrupted=true;render();},OFFLINE_CARD_MS);render();});   // audit 1.1: only the console monitor shows an interruption card, and only after a grace window; OBS keeps the last frame live
+ client.addEventListener('fatal',e=>{offline=true;fatalMsg=e.detail;render();});
  // React to VDO readiness + stats messages: iframe load can precede media initialization.
  window.addEventListener('message',e=>{
    if(e.origin!=='https://vdo.ninja')return;
