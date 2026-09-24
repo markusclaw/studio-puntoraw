@@ -16,16 +16,21 @@
    tile.frame.contentWindow?.postMessage({volume:gain},'https://vdo.ninja');
    tile.frame.contentWindow?.postMessage({mute:muted},'https://vdo.ninja');
  }
- // Build (or rebuild) the VDO view iframe for a tile. Joining the ROOM (not a bare view=ID)
- // is essential: the publisher and director negotiate inside the room, so a room-scoped
- // viewer connects to the same media context — a bare view=ID viewer renders black. Rebuilding
+ // Build (or rebuild) the VDO view iframe for a tile. The viewer must be a room SCENE
+ // (`room` + `scene` + `view=ID`): a bare view=ID renders black (stream IDs are salted by the
+ // room), and `room`+`view` WITHOUT `scene` makes VDO.Ninja show its "Join Room" chooser
+ // instead of the video — that was the black stage. `scene` + an explicit `view` pulls exactly
+ // this one stream at program quality regardless of the director's scene toggles. Rebuilding
  // is also how a frozen/stale connection is recovered, since the streamID never changes.
  function mountView(tile,box,streamID){
    tile.frame?.remove();
    tile.streamID=streamID;tile.connected=false;tile.mountAt=Date.now();
    tile.frames=-1;tile.framesAt=Date.now();tile.remountAt=Date.now();
-   const q=new URLSearchParams({room,view:streamID,cleanoutput:'',autostart:'',speakermute:'',transparent:'',cover:box.cover===false?'0':'1'});
+   const q=new URLSearchParams({room,scene:'',view:streamID,cleanoutput:'',autostart:'',speakermute:'',transparent:'',cover:box.cover===false?'0':'1'});
    if(p.get('password'))q.set('password',p.get('password'));
+   // The console's own preview pane is a monitor, not the OBS output: ask the publisher for a
+   // lighter stream so each host's upload (VDO is peer-to-peer) isn't multiplied at full rate.
+   if(monitor)q.set('videobitrate','1200');
    const f=document.createElement('iframe');f.title=tile.name.textContent;f.allow='autoplay';f.src='https://vdo.ninja/?'+q;
    tile.frame=f;f.addEventListener('load',()=>volume(tile));tile.el.insertBefore(f,tile.name);
  }
@@ -33,12 +38,12 @@
    return !!snapshot?.members.find(m=>m.streamID===streamID&&(m.role==='crew'&&m.ready||m.role==='guest'&&m.admitted));
  }
  // Deep-scan a getStats payload for a decoded/received frame counter, whatever its exact
- // shape. Returns -1 when none is found, so an unrecognised stats format can never trigger
+ // shape (VDO currently reports it as `_decodeFrames` under inbound.<streamID>.<trackId>). Returns -1 when none is found, so an unrecognised stats format can never trigger
  // a reconnect (fail-safe: the watchdog only acts on positive evidence of a stall).
  function frameCount(stats){
    let n=-1;const scan=o=>{if(!o||typeof o!=='object')return;
      for(const k in o){const v=o[k];
-       if(typeof v==='number'&&/frames?_?(decoded|received)/i.test(k))n=Math.max(n,v);
+       if(typeof v==='number'&&/(frames?_?(decoded|received)|decoded?_?frames)/i.test(k))n=Math.max(n,v);
        else if(v&&typeof v==='object')scan(v);}};
    scan(stats);return n;
  }
@@ -80,7 +85,7 @@
      if(!memberPresent(tile.streamID) || now-tile.remountAt<REMOUNT_COOLDOWN_MS)continue;
      const noFirstFrame = !tile.connected && now-tile.mountAt>FIRST_FRAME_MS;
      const stalled = tile.connected && tile.frames>0 && now-tile.framesAt>STALL_MS;
-     if(noFirstFrame||stalled){ tile.wait.textContent='RECONNECTING'; mountView(tile,tile.box,tile.streamID); }
+     if(noFirstFrame||stalled){ tile.wait.textContent=stalled?'RECONNECTING':'WAITING FOR CAMERA'; mountView(tile,tile.box,tile.streamID); }
    }
  }
  client.addEventListener('state',e=>{snapshot=e.detail;offline=false;render();});
