@@ -767,7 +767,11 @@
       for(var i=0;i<boxes.length;i++){
         var box=boxes[i];
         var item=(scene&&scene.layout)?scene.layout.find(function(it){return it.id===box.dataset.boxId;}):null;
-        var src=(item&&item.streamID&&st.sources)?st.sources.get(item.streamID):null;
+        // Seats are bound by SLOT (protocol 2): layout boxes carry streamID '' by design, so look the
+        // live source up by slot. Matching on item.streamID never hit, which tagged every box
+        // "nofeed" and painted an opaque wall over the shared program frame.
+        var slot=item?(parseInt(item.slot,10)+1):-1, src=null;
+        if(st.sources){st.sources.forEach(function(x){if(!src&&x.slot===slot)src=x;});}
         var hasVideo=!!(src && !src.disconnected && !src.videoMuted);
         box.dataset.nofeed=hasVideo?'false':'true';
       }

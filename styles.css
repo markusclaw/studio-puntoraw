@@ -2191,7 +2191,9 @@ body[data-transcript="on"] .raw-tr-live{display:inline-block}
 #studio-root .stage-overlay .layout-box[data-drop-target="true"]{
   background:transparent!important;box-shadow:none!important;
   border-color:rgba(255,255,255,.10)!important}
-#studio-root .stage-overlay .layout-box[data-nofeed="true"]{background:#0a0908!important}
+/* program.html renders its own WAITING state under these boxes; never paint over the program frame. */
+#studio-root .stage-overlay .layout-box{background:transparent!important}
+#studio-root .stage-overlay .layout-box[data-nofeed="true"]{background:transparent!important}
 
 /* ============================================================
    MARKUS rail fix — stop the transcript controls clipping and
