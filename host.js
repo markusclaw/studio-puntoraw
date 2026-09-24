@@ -344,6 +344,9 @@ function buildUI() {
 	// Join card (identity gate)
 	const overlay = document.createElement("div");
 	overlay.className = "raw-join-overlay";
+	overlay.setAttribute("role", "dialog");   // audit 4.8: the join gate is a modal dialog
+	overlay.setAttribute("aria-modal", "true");
+	overlay.setAttribute("aria-label", "Enter the Studio");
 	overlay.innerHTML = `
 		<form class="raw-join-card" autocomplete="off">
 			<div class="rj-brand"><span class="d"></span><span class="w"><span class="a">.RAW</span> SESSIONS</span></div>
@@ -417,7 +420,13 @@ function render() {
 		sel.innerHTML = `<option value="">Pass host…</option>` +
 			others.map(m => `<option value="${escapeHtml(m.id)}">→ ${escapeHtml(m.name)}</option>`).join("");
 		sel.disabled = others.length === 0;
-		sel.addEventListener("change", () => { if (sel.value) { passHostTo(sel.value); sel.value = ""; } });
+		sel.addEventListener("change", () => {
+			if (!sel.value) return;
+			// audit 4.8: passing control is a show-breaker — confirm, and name who gets it.
+			const who = (sel.options[sel.selectedIndex]?.text || "that host").replace(/^→\s*/, "");
+			if (confirm(`Pass host control to ${who}? You will no longer control the program.`)) passHostTo(sel.value);
+			sel.value = "";
+		});
 		c.appendChild(sel);
 	} else if (role === "crew") {
 		const btn = document.createElement("button");

@@ -144,7 +144,10 @@ function publishProgram(){
  const draft=JSON.parse(JSON.stringify(programDraft()));
  if(JSON.stringify(draft)===JSON.stringify({scenes:roomSnapshot.program.scenes,activeSceneId:roomSnapshot.program.activeSceneId,brand:roomSnapshot.program.brand}))return;
  programPending=true;pendingDraft=draft;   // audit 1.7: remember our edit so a conflict can re-send it on the new revision instead of dropping it
- window.RawHost.send({type:'program',revision:roomSnapshot.program.revision,program:draft});
+ const sent=window.RawHost.send({type:'program',revision:roomSnapshot.program.revision,program:draft});
+ // audit 4.6: give the operator feedback instead of a silent drop. false = the socket is down.
+ if(sent===false){programPending=false;pendingDraft=null;showToast("Not connected — your change wasn't sent");setStatus("Reconnecting","idle");}
+ else setStatus("Sending…","idle");
 }
 const memberGoneSince={}; // streamID -> first time its member went missing (grace window)
 function receiveRoom(snapshot,opts){
