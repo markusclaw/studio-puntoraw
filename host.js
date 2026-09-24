@@ -168,7 +168,6 @@ function connectSocket() {
   client.connect();
 }
 function closeSocket(sendLeave=false){ runtime.client?.close(sendLeave);runtime.client=null;runtime.connected=false; }   // audit 1.3: only an explicit Leave sends `leave`; a refresh/tab-close closes silently so the seat + badge survive
-function scheduleReconnect() {} // RawRoomClient owns bounded reconnects.
 
 /* ========================================================================
  * LOCAL MODE (offline fallback; everyone treated as crew)

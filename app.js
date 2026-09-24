@@ -71,15 +71,6 @@ const state = {
 	}
 };
 
-const defaultScenes = [
-	{
-		id: "scene_1",
-		name: "Scene 1",
-		auto: true,
-		layout: []
-	}
-];
-
 function clone(value) {
 	return JSON.parse(JSON.stringify(value));
 }
@@ -1871,51 +1862,6 @@ function getRowRects(count) {
 		w: cellW,
 		h: cellH
 	}));
-}
-
-function exportLayoutItem(item) {
-	const output = {
-		x: round(item.x),
-		y: round(item.y),
-		w: round(item.w),
-		h: round(item.h),
-		z: item.z || 0,
-		cover: item.cover !== false,
-		rounded: state.brand.radius,
-		margin: 0
-	};
-	if (Number.isFinite(parseInt(item.slot, 10))) {
-		output.slot = parseInt(item.slot, 10);
-	}
-	return output;
-}
-
-function buildLayoutPayload(scene) {
-	if (!scene || scene.auto) {
-		return false;
-	}
-	const hasDirectStreams = scene.layout.some(item => item.streamID);
-	if (!hasDirectStreams) {
-		return scene.layout.map(exportLayoutItem);
-	}
-	const combined = {};
-	scene.layout.forEach(item => {
-		const output = exportLayoutItem(item);
-		if (item.streamID) {
-			combined[item.streamID] = output;
-			return;
-		}
-		const source = findSourceBySlot(item.slot);
-		if (source) {
-			combined[source.streamID] = output;
-			return;
-		}
-		if (!combined[""]) {
-			combined[""] = [];
-		}
-		combined[""].push(output);
-	});
-	return combined;
 }
 
 function applySceneToFrame() {
