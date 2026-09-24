@@ -74,7 +74,7 @@
 						</div>
 					</div>
 					<div class="topbar__status">
-						<button type="button" id="copy-scene-top" class="topbar__scene" title="Copy the OBS scene link"><i class="las la-copy"></i><span>Scene link</span></button>
+						<button type="button" id="copy-scene-top" class="topbar__scene" title="Click to copy the OBS scene link"><span class="topbar__scene-label">Scene</span><span class="topbar__scene-url" id="scene-url-top">—</span><i class="las la-copy"></i></button>
 						<span class="status-pill" id="connection-status" data-state="idle">Starting</span>
 						<button type="button" id="refresh-state" class="icon-button" title="Refresh source list" aria-label="Refresh source list"><i class="las la-sync"></i></button>
 					</div>
@@ -591,8 +591,8 @@
     if(!panel||!strip||!actions) return;
     var btn=document.createElement('button');
     btn.type='button'; btn.className='button button--secondary raw-layouts-btn';
-    btn.setAttribute('aria-expanded','false'); btn.setAttribute('aria-label','Layout presets');
-    btn.innerHTML='<i class="las la-th-large" style="margin-right:6px"></i>More';
+    btn.setAttribute('aria-expanded','false'); btn.setAttribute('aria-label','More layouts'); btn.title='More layouts';
+    btn.innerHTML='<i class="las la-th-large"></i>';
     actions.insertBefore(btn, actions.firstChild);
     function place(){
       var pr=panel.getBoundingClientRect(), br=btn.getBoundingClientRect();

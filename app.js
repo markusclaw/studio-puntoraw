@@ -1046,6 +1046,8 @@ function renderLinks() {
 		document.getElementById("invite-link").value = url;
 	});
 	document.getElementById("scene-link").value = buildSceneUrl();
+	const sceneUrlTop = document.getElementById("scene-url-top");
+	if (sceneUrlTop) sceneUrlTop.textContent = buildSceneUrl();
 	const passwordInput = document.getElementById("room-password-display");
 	const passwordCard = document.getElementById("password-card");
 	const copyPassword = document.getElementById("copy-password");

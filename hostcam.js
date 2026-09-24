@@ -17,8 +17,18 @@
   function sync(){if(btn){btn.textContent=frame?'◉ Camera connected':'◉ Join camera';btn.setAttribute('aria-pressed',String(!!frame));}}
   function ready(){
     btn=document.createElement('button');btn.type='button';btn.className='raw-bcast-btn raw-hostcam-btn';btn.addEventListener('click',()=>frame?stop():start());
-    // Personal camera stays available even when someone else controls the show.
-    document.querySelector('.program-toolbar')?.appendChild(btn);sync();
+    // Personal camera lives at the top of the Crew tab — it's "your feed", grouped with the other
+    // participant controls rather than sitting in the program/broadcast toolbar. Stays available
+    // even when someone else controls the show.
+    const card=document.createElement('div');card.className='raw-selfcam';
+    const lbl=document.createElement('span');lbl.className='raw-selfcam__label';lbl.textContent='Your feed';
+    card.append(lbl,btn);
+    const panel=document.querySelector('.tab-panel[data-panel="sources"]');
+    const head=panel&&panel.querySelector('.panel-heading--section');
+    if(head&&head.parentNode){head.parentNode.insertBefore(card,head.nextSibling);}
+    else if(panel){panel.appendChild(card);}
+    else{document.querySelector('.program-toolbar')?.appendChild(btn);}
+    sync();
   }
   document.readyState==='loading'?document.addEventListener('DOMContentLoaded',ready):ready();
   window.addEventListener('raw-room-state',()=>{if(wanted)start();});

@@ -19,20 +19,37 @@
    tile.frame.contentWindow?.postMessage({volume:gain},'https://vdo.ninja');
    tile.frame.contentWindow?.postMessage({mute:muted},'https://vdo.ninja');
  }
- // Standby test tone (~1kHz, the SMPTE-bars tone) — emitted ONLY on the OBS/output page,
- // never the operator's console monitor. Ramped in/out to avoid clicks. Requires the page's
- // autoplay to be allowed (OBS Browser Source is; a normal tab needs one prior interaction).
- function standbyTone(on){
-   if(monitor)return;
-   if(on&&!sbAudio){
-     try{const AC=window.AudioContext||window.webkitAudioContext,ctx=new AC(),osc=ctx.createOscillator(),g=ctx.createGain();
-       osc.type='sine';osc.frequency.value=1000;g.gain.value=0.0001;osc.connect(g);g.connect(ctx.destination);osc.start();
-       g.gain.exponentialRampToValueAtTime(0.03,ctx.currentTime+0.4);sbAudio={ctx,osc,g};}catch(e){}
-   } else if(!on&&sbAudio){
-     const a=sbAudio;sbAudio=null;
-     try{a.g.gain.exponentialRampToValueAtTime(0.0001,a.ctx.currentTime+0.2);a.osc.stop(a.ctx.currentTime+0.25);setTimeout(()=>{try{a.ctx.close();}catch(e){}},400);}catch(e){}
-   }
+ // Standby test tone (~1kHz, the SMPTE-bars tone). The broadcast output (OBS/scene window)
+ // gets the full-level tone; the operator's console monitor gets a much quieter version so the
+ // operator hears audible confirmation the moment standby goes live without sitting under a
+ // loud tone through a break. One persistent AudioContext/oscillator for the page's life — we
+ // just ramp its gain, so repeated render() calls are idempotent and we never churn contexts.
+ // Autoplay: OBS Browser Source allows it; a normal tab may start the context suspended, so we
+ // resume() on toggle AND on the first user gesture (see the listener below).
+ const TONE_LEVEL = monitor ? 0.006 : 0.03;
+ function ensureTone(){
+   if(sbAudio)return sbAudio;
+   try{const AC=window.AudioContext||window.webkitAudioContext,ctx=new AC(),osc=ctx.createOscillator(),g=ctx.createGain();
+     osc.type='sine';osc.frequency.value=1000;g.gain.value=0.0001;osc.connect(g);g.connect(ctx.destination);osc.start();
+     sbAudio={ctx,osc,g};}catch(e){sbAudio=null;}
+   return sbAudio;
  }
+ function standbyTone(on){
+   const a=on?ensureTone():sbAudio;
+   if(!a)return;
+   try{
+     if(on&&a.ctx.state==='suspended')a.ctx.resume().catch(()=>{});
+     const t=a.ctx.currentTime;
+     a.g.gain.cancelScheduledValues(t);
+     a.g.gain.setValueAtTime(Math.max(a.g.gain.value,0.0001),t);
+     a.g.gain.exponentialRampToValueAtTime(on?TONE_LEVEL:0.0001, t+(on?0.4:0.25));
+   }catch(e){}
+ }
+ // A suspended context (autoplay-blocked tab) resumes on the first interaction, so a standby
+ // that was already live starts sounding as soon as the operator touches the page.
+ ['pointerdown','keydown','touchstart'].forEach(ev=>window.addEventListener(ev,()=>{
+   if(sbAudio&&sbAudio.ctx.state==='suspended')sbAudio.ctx.resume().catch(()=>{});
+ },{passive:true,once:false}));
  // Build (or rebuild) the VDO view iframe for a tile. The combo that works is
  // `room` + `view=ID` + `solo=1`: a bare view=ID renders black (stream IDs are salted by the
  // room), and `room`+`view` WITHOUT a join mode makes VDO.Ninja show its "Join Room" chooser

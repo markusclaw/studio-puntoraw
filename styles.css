@@ -517,33 +517,60 @@ button {
 	color: #ff9d8a;
 }
 
-/* Scene link: a one-click copy chip in the topbar so the OBS source URL is always to hand. */
+/* Scene link: the full OBS source URL shown inline in the topbar, click anywhere to copy. */
 .topbar__scene {
 	display: inline-flex;
 	align-items: center;
-	gap: 6px;
-	min-height: 26px;
-	padding: 0 11px;
+	gap: 8px;
+	min-height: 28px;
+	max-width: 420px;
+	padding: 0 10px 0 11px;
 	border: 1px solid var(--line);
-	border-radius: 999px;
+	border-radius: 7px;
 	background: rgba(255, 255, 255, 0.04);
 	color: var(--muted);
 	cursor: copy;
-	font-size: 10px;
-	font-weight: 700;
-	text-transform: uppercase;
-	letter-spacing: 0.12em;
-	white-space: nowrap;
 	transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
+.topbar__scene-label {
+	flex: 0 0 auto;
+	font-size: 9px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.16em;
+	color: var(--bronze, #c6763b);
+}
+
+.topbar__scene-url {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-family: var(--mono, ui-monospace, monospace);
+	font-size: 11px;
+	letter-spacing: 0.01em;
+	color: rgba(236, 231, 221, 0.82);
+}
+
 .topbar__scene i {
-	font-size: 13px;
+	flex: 0 0 auto;
+	font-size: 14px;
+	opacity: 0.7;
 }
 
 .topbar__scene:hover {
-	background: rgba(198, 118, 59, 0.14);
+	background: rgba(198, 118, 59, 0.12);
 	border-color: rgba(198, 118, 59, 0.4);
+}
+
+.topbar__scene:hover .topbar__scene-url {
+	color: #f0e7dc;
+}
+
+.topbar__scene:hover i {
+	opacity: 1;
 	color: #e7b487;
 }
 
@@ -2195,18 +2222,22 @@ body[data-transcript="on"] .raw-tr-live{display:inline-block}
 #move-scene-up,#move-scene-down,#duplicate-scene,#delete-scene,#go-live,
 .scene-name-label,#active-scene-title,.raw-layouts-btn{display:none!important}
 
-/* Spotlight / Duo / Triple segmented switcher */
-.raw-modes{display:inline-flex;gap:6px;align-items:center}
+/* Spotlight / Duo / Triple: one connected segmented control (single unit, no gaps). */
+.raw-modes{display:inline-flex;align-items:stretch;height:34px;
+  border:1px solid rgba(255,255,255,.11);border-radius:9px;overflow:hidden;
+  background:rgba(255,255,255,.03)}
 .raw-mode{
   appearance:none;cursor:pointer;font-family:var(--mono,ui-monospace,monospace);
-  font-size:12px;letter-spacing:.08em;text-transform:uppercase;
-  padding:9px 16px;border-radius:8px;
-  color:rgba(236,231,221,.78);background:rgba(255,255,255,.04);
-  border:1px solid rgba(255,255,255,.09);transition:all .12s ease}
-.raw-mode:hover{color:#ECE7DD;background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.16)}
+  display:inline-flex;align-items:center;
+  font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  padding:0 15px;border:0;border-radius:0;
+  color:rgba(236,231,221,.72);background:transparent;
+  transition:background .12s ease,color .12s ease}
+.raw-mode + .raw-mode{border-left:1px solid rgba(255,255,255,.09)}
+.raw-mode:hover{color:#ECE7DD;background:rgba(255,255,255,.06)}
 .raw-mode[aria-pressed="true"]{
-  color:#1a120b;background:var(--bronze,#C6763B);border-color:var(--bronze,#C6763B);
-  font-weight:600;box-shadow:0 2px 12px rgba(198,118,59,.35)}
+  color:#1a120b;background:var(--bronze,#C6763B);font-weight:600;border-left-color:transparent}
+.raw-mode[aria-pressed="true"] + .raw-mode{border-left-color:transparent}
 
 /* ============================================================
    LOCK PROGRAM BOXES — layout is preset-driven only. No manual
@@ -2247,8 +2278,10 @@ body[data-transcript="on"] .raw-tr-live{display:inline-block}
    ============================================================ */
 .program-toolbar__actions{display:flex;align-items:center;gap:8px}
 .raw-modes{order:1}
-#studio-root .raw-layouts-btn{display:inline-flex!important;align-items:center;order:2;
-  font-size:12px;letter-spacing:.06em}
+/* "More" is now a compact icon button (no label) sitting flush beside the segmented control. */
+#studio-root .raw-layouts-btn{display:inline-flex!important;align-items:center;justify-content:center;order:2;
+  width:34px;height:34px;padding:0;border-radius:9px;font-size:17px;line-height:1}
+#studio-root .raw-layouts-btn i{margin:0}
 
 /* ============================================================
    CREW RAIL — pinned host seats, guest divider, seat delete;
@@ -2357,7 +2390,16 @@ body[data-transcript="on"] .raw-tr-live{display:inline-block}
 /* ============================================================
    BROADCAST — logo bug, standby overlay, Logo/Standby buttons.
    ============================================================ */
-.raw-bcast{display:inline-flex;gap:6px;align-items:center;order:3}
+/* Broadcast is its own category: a divider sets it apart from the layout controls to its left. */
+.raw-bcast{display:inline-flex;gap:6px;align-items:center;order:3;
+  margin-left:4px;padding-left:14px;border-left:1px solid rgba(255,255,255,.1)}
+
+/* Your feed: the operator's personal camera toggle, grouped at the top of the Crew tab. */
+.raw-selfcam{display:flex;align-items:center;gap:10px;margin:2px 14px 12px;padding:9px 12px;
+  border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.02)}
+.raw-selfcam__label{flex:0 0 auto;font-family:var(--mono,ui-monospace,monospace);font-size:9px;
+  letter-spacing:.22em;text-transform:uppercase;color:rgba(228,222,210,.42)}
+.raw-selfcam .raw-hostcam-btn{margin-left:auto;flex:0 0 auto}
 .raw-bcast-btn{appearance:none;cursor:pointer;font-family:var(--mono,ui-monospace,monospace);font-size:12px;
   letter-spacing:.06em;text-transform:uppercase;padding:9px 14px;border-radius:8px;
   color:rgba(236,231,221,.78);background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);transition:all .12s ease}
@@ -2483,7 +2525,8 @@ body[data-transcript="on"] .raw-tr-live{display:inline-block}
   .raw-session{ margin-left:0; }
   .program-toolbar{ flex-wrap:wrap; row-gap:8px; }
   .program-toolbar__actions{ flex-wrap:wrap; row-gap:6px; width:100%; }
-  .raw-modes, .raw-bcast{ flex-wrap:wrap; }
+  .raw-bcast{ flex-wrap:wrap; }
+  .raw-modes{ flex-wrap:nowrap; }   /* segmented control stays one connected unit */
   .program-panel .stage-aspect{ width:100%!important; height:auto!important; max-width:100%!important; }
   .raw-desk{ max-width:100%; }
   .raw-desk__rack{ -webkit-overflow-scrolling:touch; }
@@ -2581,7 +2624,7 @@ body[data-program-standby="true"] #stage-overlay { opacity:0 !important; pointer
   .program-toolbar__actions{ flex-wrap:nowrap!important; justify-content:flex-start; gap:6px;
     overflow-x:auto; -webkit-overflow-scrolling:touch; width:100%; padding-bottom:4px; scrollbar-width:none; }
   .program-toolbar__actions::-webkit-scrollbar{ display:none; }
-  .program-toolbar__actions .raw-modes,
+  .program-toolbar__actions .raw-modes{ flex:0 0 auto; flex-wrap:nowrap!important; gap:0; }
   .program-toolbar__actions .raw-bcast{ flex:0 0 auto; flex-wrap:nowrap!important; gap:6px; }
   .program-toolbar__actions .button{ flex:0 0 auto!important; white-space:nowrap; width:auto!important; }
 
