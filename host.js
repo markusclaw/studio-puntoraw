@@ -118,6 +118,7 @@ function admitGuest(id) { if (amHost()) sendSocket({ type: "admit", target: id }
 function denyGuest(id)  { if (amHost()) sendSocket({ type: "deny",  target: id }); }
 function knockingGuests() { return runtime.members.filter(m => m.role === "guest" && !m.admitted && !m.denied); }   // audit 4.6: a denied guest is not "waiting"
 function admittedGuests() { return runtime.members.filter(m => m.role === "guest" && m.admitted); }
+function deniedGuests()   { return runtime.members.filter(m => m.role === "guest" && !m.admitted && m.denied); }   // re-audit N3: still listed so a mis-click can be undone
 
 /* Called from the join card. */
 function joinAs(name, code) {
@@ -294,6 +295,12 @@ function injectStyles() {
 	.raw-knock .krow .admit{background:var(--accent,#C6763B);color:#1a120b;font-weight:600}
 	.raw-knock .krow .deny{background:#1c1c1f;color:#8f877b}
 	.raw-knock .krow .deny:hover{color:#D6412B}
+	.raw-knock .krow .readmit{background:#1c1c1f;color:#C6763B;border:1px solid rgba(198,118,59,.35)}
+	.raw-knock .krow .readmit:hover{background:rgba(198,118,59,.12)}
+	.raw-knock .krow--denied .nm{color:#8f877b;text-decoration:line-through;text-decoration-color:rgba(214,65,43,.5)}
+	.raw-knock .kh--denied{color:#8f877b}
+	/* audit 4.8: inline variant lives inside the Crew panel instead of floating over the rail tabs */
+	.raw-knock--inline{position:static;width:auto;margin:0 0 12px;box-shadow:none;z-index:auto}
 	/* Join card (identity gate) */
 	.raw-join-overlay{position:fixed;inset:0;z-index:10000;display:none;align-items:center;justify-content:center;
 		background:rgba(8,7,6,.72);backdrop-filter:blur(3px)}
@@ -344,7 +351,11 @@ function buildUI() {
 	// Knocking tray (host-only; shows guests waiting in the greenroom)
 	const knock = document.createElement("div");
 	knock.className = "raw-knock";
-	document.body.appendChild(knock);
+	// audit 4.8: the fixed-position tray overlapped the rail tabs. Render it inline at the top of
+	// the Crew panel when that panel exists (it always does on the console); body is the fallback.
+	const crewPanel = document.querySelector('.tab-panel[data-panel="sources"]');
+	if (crewPanel) { knock.classList.add("raw-knock--inline"); crewPanel.prepend(knock); }
+	else document.body.appendChild(knock);
 
 	// Join card (identity gate)
 	const overlay = document.createElement("div");
@@ -468,7 +479,8 @@ function render() {
 	if (runtime.el.knock) {
 		const knockers = amHost() ? knockingGuests() : [];
 		const admitted = amHost() ? admittedGuests() : [];   // audit 4.6: admitted guests get a Remove
-		runtime.el.knock.dataset.show = (knockers.length || admitted.length) ? "true" : "false";
+		const denied = amHost() ? deniedGuests() : [];       // re-audit N3
+		runtime.el.knock.dataset.show = (knockers.length || admitted.length || denied.length) ? "true" : "false";
 		let khtml = "";
 		if (knockers.length) {
 			khtml += `<div class="kh">Greenroom<span class="n">${knockers.length} waiting</span></div>` +
@@ -483,6 +495,15 @@ function render() {
 				admitted.map(m =>
 					`<div class="krow"><span class="nm">${escapeHtml(m.name)}</span>` +
 					`<button class="deny" data-remove="${escapeHtml(m.id)}">Remove</button></div>`
+				).join("");
+		}
+		// re-audit N3: a denied/removed guest was invisible to every UI until the worker purged them,
+		// so a mis-click on Deny/Remove locked them out. `admit` resets denied=false on the worker.
+		if (denied.length) {
+			khtml += `<div class="kh kh--denied">Denied<span class="n">${denied.length}</span></div>` +
+				denied.map(m =>
+					`<div class="krow krow--denied"><span class="nm">${escapeHtml(m.name)}</span>` +
+					`<button class="readmit" data-admit="${escapeHtml(m.id)}">Re-admit</button></div>`
 				).join("");
 		}
 		runtime.el.knock.innerHTML = khtml;

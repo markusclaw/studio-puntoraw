@@ -105,7 +105,7 @@
 					<!-- ── Live Transcript (in scenes panel) ── -->
 					<div class="transcript-section">
 						<div class="panel-heading">
-							<h2>Transcript</h2>
+							<h2 title="Web Speech API on this console's microphone only — not the program mix">Local transcript · your mic</h2><!-- audit 4.8: say what it actually transcribes -->
 							<div class="panel-heading__actions">
 								<select id="transcript-lang" class="raw-select">
 									<option value="es-MX">es-MX</option>
@@ -116,7 +116,7 @@
 							</div>
 						</div>
 						<div id="transcript-log" class="transcript-log" role="log" aria-live="polite">
-							<div class="transcript-empty">Press Start to begin live transcription</div>
+							<div class="transcript-empty">Press Start to transcribe your own mic on this console</div>
 						</div>
 					</div>
 				</aside>
@@ -549,10 +549,16 @@
 				btn.addEventListener('click', function() {
 					const target = document.getElementById(btn.dataset.target);
 					if (target && target.value) {
-						navigator.clipboard.writeText(target.value);
+						// audit 4.8: only show the ✓ once writeText actually resolved; surface failures via the shared toast.
 						const icon = btn.querySelector('i');
-						icon.className = 'las la-check';
-						setTimeout(function() { icon.className = 'las la-copy'; }, 1500);
+						const label = btn.closest('.obs-link-card')?.querySelector('.obs-link-card__label')?.textContent.trim() || 'OBS link';
+						navigator.clipboard.writeText(target.value).then(function() {
+							icon.className = 'las la-check';
+							setTimeout(function() { icon.className = 'las la-copy'; }, 1500);
+							if (window.rawToast) window.rawToast(label + ' copied');
+						}, function() {
+							if (window.rawToast) window.rawToast('Unable to copy ' + label.toLowerCase());
+						});
 					}
 				});
 			});
@@ -644,7 +650,7 @@
       var qb=document.createElement('div');qb.className='raw-quickbar';
       var mic=realBtn(card,['Mute Mic','Unmute Mic']);if(mic){var muted=mic.textContent.trim()==='Unmute Mic';var b=iconBtn('raw-qbtn--mic',muted?'la-microphone-slash':'la-microphone',muted?'Unmute mic':'Mute mic');b.dataset.active=muted?'off':'on';b.addEventListener('click',proxy(mic));qb.appendChild(b);}
       var cam=realBtn(card,['Camera Off','Camera On']);if(cam){var off=cam.textContent.trim()==='Camera On';var b2=iconBtn('raw-qbtn--cam',off?'la-video-slash':'la-video',off?'Turn camera on':'Turn camera off');b2.dataset.active=off?'off':'on';b2.addEventListener('click',proxy(cam));qb.appendChild(b2);}
-      var solo=realBtn(card,['Solo']);if(solo){var b3=iconBtn('raw-qbtn--solo','la-star','Solo');b3.addEventListener('click',proxy(solo));qb.appendChild(b3);}
+      var solo=realBtn(card,['Fullscreen','Solo']);if(solo){var b3=iconBtn('raw-qbtn--solo','la-expand','Fullscreen');b3.addEventListener('click',proxy(solo));qb.appendChild(b3);}
       var stg=realBtn(card,['Add to Scene','Remove from Scene']);if(stg){var on=stg.textContent.trim()==='Remove from Scene';var b4=iconBtn('raw-qbtn--stage',on?'la-user-minus':'la-user-plus',on?'Remove from scene':'Add to scene');b4.dataset.on=on?'true':'false';if(stg.disabled)b4.disabled=true;b4.addEventListener('click',proxy(stg));qb.appendChild(b4);}
       var act=realBtn(card,['Activate Guest']);if(act){var b5=iconBtn('raw-qbtn--act','la-user-check','Activate guest');b5.addEventListener('click',proxy(act));qb.appendChild(b5);}
       var more=iconBtn('raw-qbtn--more','la-ellipsis-h','More controls');more.addEventListener('click',function(e){e.stopPropagation();card.dataset.actions=card.dataset.actions==='open'?'':'open';});qb.appendChild(more);
@@ -898,6 +904,14 @@ window.rawCanControl = function(){ return !!window.RawHost?.canControl(); };
   if(!entering) return;
   window.__rawAutoEntering = true;                       // synchronous: chooser stays hidden
   try{ sessionStorage.removeItem('raw.host.enter'); }catch(e){}
+  /* re-audit N8: the greenroom also saves raw.host.seat, and host.js auto-rejoins directly
+     from a saved seat + identity (audit 1.3). Submitting the gate here as well produced a
+     second join for the same id (worker `replaced`, spurious offline render). When the
+     auto-rejoin path applies, let it own the join; only fall through to the gate submit when
+     there is no saved seat/identity for host.js to use. */
+  var seat='', ident0=null;
+  try{ seat=sessionStorage.getItem('raw.host.seat')||''; ident0=JSON.parse(sessionStorage.getItem('raw.host.identity')||'null'); }catch(e){}
+  if(seat && ident0 && ident0.name) return;
   function ready(fn){document.readyState!=='loading'?fn():document.addEventListener('DOMContentLoaded',fn);}
   ready(function(){
     var tries=0;

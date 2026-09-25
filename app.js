@@ -912,12 +912,8 @@ function renderSources() {
 			actions.append(activateButton);
 		}
 		if (!source.disconnected && !source.queued) {
-			const spotlightButton = document.createElement("button");
-			spotlightButton.type = "button";
-			spotlightButton.className = "button button--secondary";
-			spotlightButton.textContent = "Spotlight";
-			spotlightButton.addEventListener("click", () => spotlightSource(source.streamID));
-			actions.append(spotlightButton);
+			// audit 4.8: the card "Spotlight" button is retired — it collided with the toolbar SPOTLIGHT mode
+			// (a different layout). spotlightSource() stays exported for callers; the card offers Fullscreen.
 		}
 		if (!isPlaceholder && !source.disconnected) {
 			// fable §3: your OWN card controls your own publisher directly (reliable, never gated by
@@ -959,7 +955,8 @@ function renderSources() {
 			const soloButton = document.createElement("button");
 			soloButton.type = "button";
 			soloButton.className = "button button--secondary";
-			soloButton.textContent = "Solo";
+			soloButton.textContent = "Fullscreen";   // audit 4.8: was "Solo" — "Solo" is also the layout preset name
+			soloButton.title = "Put this source full-frame on the program";
 			soloButton.addEventListener("click", () => soloSource(source.streamID));
 			actions.append(soloButton);
 		}
@@ -1571,7 +1568,7 @@ function soloSource(sourceId) {
 		return;
 	}
 	const scene = ensureEditableScene();
-	scene.name = source.label ? `Solo: ${source.label}` : "Solo";
+	scene.name = source.label ? `Fullscreen: ${source.label}` : "Fullscreen";   // audit 4.8
 	scene.layout = [
 		{
 			id: createId("box"),

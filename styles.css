@@ -12,7 +12,7 @@
 	--line-strong: rgba(255, 255, 255, 0.14);
 	--text: #E6DFD2;
 	--muted: #948B7E;
-	--soft: #6f685e;
+	--soft: #857d71;   /* audit 4.8: was #6f685e (3.4:1 on #131211); now 4.6:1 — the floor for the 9–11 px labels that use it */
 	--accent: #C6763B;
 	--accent-2: #D2542A;
 	--danger: #D6412B;
@@ -464,6 +464,8 @@ button {
 	align-items: center;
 	gap: 16px;
 	padding: 5px 18px;
+	box-sizing: border-box;
+	min-height: 40px;   /* re-audit N7: fixed budget so the stage height calc below can subtract it */
 	border-bottom: 1px solid var(--line);
 	background: rgba(13, 12, 11, 0.9);
 	flex-wrap: wrap;
@@ -2607,9 +2609,10 @@ body[data-transcript="on"] .raw-tr-live{display:inline-block}
   .program-panel .stage-shell{ grid-template-rows:minmax(0,1fr)!important; min-height:0; }
   /* audit 4.7: width-driven, so the preview is ALWAYS true 16:9 and matches OBS. Sizing off
      height:100% + max-width let the box become e.g. 1.46:1 on 1024x768. The width budget subtracts
-     the topbar (~56), toolbar (~58) and the control desk (~310) from the viewport height. */
+     the topbar (~56), session bar (40, re-audit N7), toolbar (~58) and the control desk (~310)
+     from the viewport height. */
   .program-panel .stage-aspect{
-    width:min(100%, calc((100vh - 56px - 58px - 310px) * 16 / 9))!important; height:auto!important;
+    width:min(100%, calc((100vh - 56px - 40px - 58px - 310px) * 16 / 9))!important; height:auto!important;
     max-width:100%!important;
     margin-inline:auto;
   }
