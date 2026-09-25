@@ -1602,13 +1602,17 @@ function toggleSourceControl(streamID, control) {
 	if (!source) {
 		return;
 	}
-	const action = control === "video" ? "video" : "mic";
-	framePost({ function: "targetGuest", target: streamID, action });
+	// Real VDO.Ninja director remote-control API: {action:'mic'|'camera', target:streamID,
+	// value:<desired ON state>}. The old {function:'targetGuest'} shape was a leftover from a custom
+	// director page and vanilla vdo.ninja silently ignored it — that's why the card mic/cam did
+	// nothing on air. value=false means muted / camera-off. (docs.vdo.ninja iframe-api-for-directors)
 	if (control === "video") {
 		source.videoMuted = !source.videoMuted;
+		framePost({ action: "camera", target: streamID, value: !source.videoMuted });
 		setStatus(source.videoMuted ? "Camera off request sent" : "Camera on request sent", "live");
 	} else {
 		source.muted = !source.muted;
+		framePost({ action: "mic", target: streamID, value: !source.muted });
 		setStatus(source.muted ? "Mute request sent" : "Unmute request sent", "live");
 	}
 	renderSources();
