@@ -189,6 +189,10 @@ export class RawStudioRoom extends DurableObject {
       if(typeof m.standby==='boolean') this.program.standby=m.standby;
       if(typeof m.logo==='boolean') this.program.logo=m.logo;
       if(typeof m.live==='boolean') this.program.session={live:m.live,startedAt:m.live?(this.program.session.live?this.program.session.startedAt:Date.now()):null};
+      // feature: wrap. The controller ends the recording for everyone: consoles show a "That's a wrap"
+      // card with a Leave button, the program shows the hold. Starting a session clears it.
+      if(typeof m.wrapped==='boolean') this.program.wrapped=m.wrapped;
+      if(m.live===true) this.program.wrapped=false;
       this.program.revision++;
     } else if(m.type==='episode') {
       // feature: session/episode metadata (season, number, title), edited by the controller and

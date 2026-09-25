@@ -2611,10 +2611,20 @@ body[data-transcript="on"] .raw-tr-live{display:inline-block}
      height:100% + max-width let the box become e.g. 1.46:1 on 1024x768. The width budget subtracts
      the topbar (~56), session bar (40, re-audit N7), toolbar (~58) and the control desk (~310)
      from the viewport height. */
+  /* uiux: the viewport arithmetic above is a fallback only. The cell's real height varies with the
+     desk, the session bar and the window, and a stage sized taller than its cell was centered and
+     spilled over the toolbar above and the desk below. Size it from the stage-shell itself via a
+     container query (100cqh = the cell's height; 24px = the shell's vertical padding). */
+  .program-panel .stage-shell{ container-type:size; overflow:hidden; }
   .program-panel .stage-aspect{
     width:min(100%, calc((100vh - 56px - 40px - 58px - 310px) * 16 / 9))!important; height:auto!important;
     max-width:100%!important;
     margin-inline:auto;
+  }
+  @supports (width: 1cqh){
+    .program-panel .stage-aspect{
+      width:min(100%, calc((100cqh - 24px) * 16 / 9))!important;
+    }
   }
   .raw-desk{ margin-top:10px; }
 }
