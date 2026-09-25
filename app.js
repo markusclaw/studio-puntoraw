@@ -173,6 +173,9 @@ function receiveRoom(snapshot,opts){
  window.dispatchEvent(new CustomEvent('raw-program-rendered',{detail:snapshot}));
 }
 window.addEventListener('raw-room-state',e=>receiveRoom(e.detail));
+// fable §3: keep the self card's mic/camera buttons in sync when the operator toggles them from the
+// desk, the toolbar or the card itself.
+window.addEventListener('raw-hostcam-state',()=>{try{renderSources();}catch(e){}});
 window.addEventListener('raw-room-error',e=>{
  programPending=false;
  if(e.detail.code==='conflict' && pendingDraft && roomSnapshot){
@@ -347,7 +350,11 @@ function buildDirectorUrl() {
 	url.searchParams.set("chatbutton", "0");
 	url.searchParams.set("director", state.room);
 	url.searchParams.set("slotmode", "");
-	url.searchParams.set("noaudio", "");
+	// fable §4: `muted` (receive audio but don't play it) instead of `noaudio`, so VDO's getLoudness
+	// reports real levels and the desk VU meters come alive. The director still plays NO audio (the
+	// hosts' conversation is monitored through the hostcam iframe, not here), so this only feeds the
+	// meters — it does not add another thing making sound. TEST the VU moves before building AUTO.
+	url.searchParams.set("muted", "");
 	if (state.password) {
 		url.searchParams.set("password", state.password);
 	}
@@ -913,18 +920,32 @@ function renderSources() {
 			actions.append(spotlightButton);
 		}
 		if (!isPlaceholder && !source.disconnected) {
+			// fable §3: your OWN card controls your own publisher directly (reliable, never gated by
+			// who holds control) — that is the "Rafa couldn't mute himself" fix. Other hosts' cards
+			// stay controller-only requests through the director.
+			const isSelf = !!(window.rawHostCam && source.streamID === window.rawHostCam.streamID());
 			const micButton = document.createElement("button");
 			micButton.type = "button";
 			micButton.className = "button button--secondary";
-			micButton.textContent = source.muted ? "Unmute Mic" : "Mute Mic";
-			micButton.addEventListener("click", () => toggleSourceControl(source.streamID, "mic"));
+			if (isSelf) {
+				micButton.textContent = window.rawHostCam.micMuted() ? "Unmute Mic" : "Mute Mic";
+				micButton.addEventListener("click", () => window.rawHostCam.setMic(window.rawHostCam.micMuted()));
+			} else {
+				micButton.textContent = source.muted ? "Unmute Mic (request)" : "Mute Mic (request)";
+				micButton.addEventListener("click", () => toggleSourceControl(source.streamID, "mic"));
+			}
 			actions.append(micButton);
 
 			const videoButton = document.createElement("button");
 			videoButton.type = "button";
 			videoButton.className = "button button--secondary";
-			videoButton.textContent = source.videoMuted ? "Camera On" : "Camera Off";
-			videoButton.addEventListener("click", () => toggleSourceControl(source.streamID, "video"));
+			if (isSelf) {
+				videoButton.textContent = window.rawHostCam.camOff() ? "Camera On" : "Camera Off";
+				videoButton.addEventListener("click", () => window.rawHostCam.setCamera(window.rawHostCam.camOff()));
+			} else {
+				videoButton.textContent = source.videoMuted ? "Camera On (request)" : "Camera Off (request)";
+				videoButton.addEventListener("click", () => toggleSourceControl(source.streamID, "video"));
+			}
 			actions.append(videoButton);
 
 			const devicesButton = document.createElement("button");

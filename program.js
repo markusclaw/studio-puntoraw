@@ -28,14 +28,16 @@
    tile.frame.contentWindow?.postMessage({volume:gain},'https://vdo.ninja');
    tile.frame.contentWindow?.postMessage({mute:muted},'https://vdo.ninja');
  }
- // Standby test tone (~1kHz, the SMPTE-bars tone). The broadcast output (OBS/scene window)
- // gets the full-level tone; the operator's console monitor gets a much quieter version so the
- // operator hears audible confirmation the moment standby goes live without sitting under a
- // loud tone through a break. One persistent AudioContext/oscillator for the page's life — we
- // just ramp its gain, so repeated render() calls are idempotent and we never churn contexts.
- // Autoplay: OBS Browser Source allows it; a normal tab may start the context suspended, so we
- // resume() on toggle AND on the first user gesture (see the listener below).
- const TONE_LEVEL = monitor ? 0.006 : 0.03;
+ // Standby test tone (~1kHz, the SMPTE-bars tone). LIVE-RUN #1 (fable §2) reworked this:
+ //  - NEVER in a monitor. A tone in every host's headphones is the wrong signal (the ON STANDBY
+ //    ribbon is the signal), and at −80 dB "off" it could enter the Revelator loopback and keep
+ //    ringing — "it stayed ringing until we all refreshed." So the console monitor has no tone at all.
+ //  - On the OBS output it is OPT-IN via &tone=1, default off (a continuous 1 kHz on the stream is a
+ //    choice, not a default).
+ //  - When it does play, it STOPS FOR REAL on release: ramp to zero, stop the oscillator, close the
+ //    context, and rebuild a fresh one on the next standby. No oscillator is ever left running.
+ const TONE_ENABLED = !monitor && p.get('tone')==='1';
+ const TONE_LEVEL = 0.03;
  function ensureTone(){
    if(sbAudio)return sbAudio;
    try{const AC=window.AudioContext||window.webkitAudioContext,ctx=new AC(),osc=ctx.createOscillator(),g=ctx.createGain();
@@ -43,15 +45,27 @@
      sbAudio={ctx,osc,g};}catch(e){sbAudio=null;}
    return sbAudio;
  }
+ function stopTone(){
+   const a=sbAudio; sbAudio=null; if(!a)return;   // null immediately so the next standby rebuilds fresh
+   try{const t=a.ctx.currentTime;
+     a.g.gain.cancelScheduledValues(t);
+     a.g.gain.setValueAtTime(Math.max(a.g.gain.value,0.0001),t);
+     a.g.gain.exponentialRampToValueAtTime(0.0001,t+0.25);
+     a.g.gain.setValueAtTime(0,t+0.26);   // exponential can't reach 0 — land it flat at zero
+     try{a.osc.stop(t+0.3);}catch(e){}
+     setTimeout(()=>{try{a.ctx.close();}catch(e){}},400);   // release the context entirely, not leave it suspended at −80 dB
+   }catch(e){}
+ }
  function standbyTone(on){
-   const a=on?ensureTone():sbAudio;
-   if(!a)return;
+   if(!TONE_ENABLED){ if(sbAudio)stopTone(); return; }   // monitor / not-opted-in: guarantee silence
+   if(!on){ stopTone(); return; }
+   const a=ensureTone(); if(!a)return;
    try{
-     if(on&&a.ctx.state==='suspended')a.ctx.resume().catch(()=>{});
+     if(a.ctx.state==='suspended')a.ctx.resume().catch(()=>{});
      const t=a.ctx.currentTime;
      a.g.gain.cancelScheduledValues(t);
      a.g.gain.setValueAtTime(Math.max(a.g.gain.value,0.0001),t);
-     a.g.gain.exponentialRampToValueAtTime(on?TONE_LEVEL:0.0001, t+(on?0.4:0.25));
+     a.g.gain.exponentialRampToValueAtTime(TONE_LEVEL,t+0.4);
    }catch(e){}
  }
  // A suspended context (autoplay-blocked tab) resumes on the first interaction, so a standby
