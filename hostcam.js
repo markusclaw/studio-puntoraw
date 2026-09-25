@@ -21,7 +21,15 @@
     // audit 2.1: novideo tells this hidden publisher iframe NOT to download the other hosts' video
     // (it still sends our own camera, and audio stays so hosts hear each other). Removes ~2 video
     // decoders per host. TEST: verify our camera still appears on the others' stage after this.
-    const q=new URLSearchParams({room:st.room,webcam:'',push:me.streamID,label:me.name,cleanoutput:'',autostart:'',nosettings:'',quality:'1',maxframerate:'30',videobitrate:'2500',novideo:''});
+    // LAG FIX (2026-09-25): the thumbnail/stage lag is P2P fan-out — each host was uploading their
+    // camera separately to EVERY receiver (console director iframe + console preview + OBS ≈ 3
+    // uploads/host), saturating the host's uplink → dropped frames everywhere. meshcast=video routes
+    // the VIDEO through VDO's free relay: the host encodes+uploads ONCE, the relay fans it out to all
+    // viewers (docs.vdo.ninja &meshcast). Video only — audio stays P2P so hosts hear each other with
+    // the lowest latency. Adds a small relay hop of latency; falls back to P2P if the relay drops.
+    // Viewer-side framerate caps were ruled out: VDO does not allow a viewer to request a lower fps
+    // (&fps/&maxframerate are publisher-only), so the relay is the correct lever, not a tile param.
+    const q=new URLSearchParams({room:st.room,webcam:'',push:me.streamID,label:me.name,cleanoutput:'',autostart:'',nosettings:'',quality:'1',maxframerate:'30',videobitrate:'2500',meshcast:'video',novideo:''});
     if(st.password)q.set('password',st.password);
     for(const [key,param] of [['cam','videodevice'],['mic','audiodevice']]){const v=sessionStorage.getItem('raw.host.'+key);if(v&&v!=='Default')q.set(param,v);}
     frame=document.createElement('iframe');frame.className='raw-hostcam-pub';frame.title='My camera and host conversation';frame.allow='camera; microphone; autoplay';frame.src='https://vdo.ninja/?'+q;document.body.appendChild(frame);sync();

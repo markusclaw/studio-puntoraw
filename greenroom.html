@@ -243,7 +243,7 @@ function stopPublisher(){if(publisher){publisher.remove();publisher=null;}}
 function startCamera(member){
   if(publisher)return;
   if(previewStream){previewStream.getTracks().forEach(t=>t.stop());previewStream=null;}stopMeter();
-  const q=new URLSearchParams({room:ROOM,webcam:'',push:member.streamID,label:NAME,cleanoutput:'',autostart:'',quality:'1',maxframerate:'30',videobitrate:'2500'});   // audit 2.3: cap guest publish (720p/30/2.5Mbps ceiling; only reduces, never disables)
+  const q=new URLSearchParams({room:ROOM,webcam:'',push:member.streamID,label:NAME,cleanoutput:'',autostart:'',quality:'1',maxframerate:'30',videobitrate:'2500',meshcast:'video'});   // audit 2.3: cap guest publish (720p/30/2.5Mbps ceiling; only reduces, never disables). meshcast=video (2026-09-25): guest uploads video once to VDO's relay instead of once per receiver — same P2P-fan-out lag fix as the hosts; audio stays P2P.
   if(PASS)q.set('password',PASS);
   const cam=els.camSel.selectedOptions[0]?.textContent,mic=els.micSel.selectedOptions[0]?.textContent;
   if(cam&&cam!=='Default')q.set('videodevice',cam);if(mic&&mic!=='Default')q.set('audiodevice',mic);
