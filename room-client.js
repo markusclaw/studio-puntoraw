@@ -9,7 +9,7 @@
     return s;
   };
   window.RawRoomClient=class extends EventTarget {
-    constructor(room,identity){super();this.room=room;this.identity=identity;this.socket=null;this.snapshot=null;this.joined=false;this.stopped=true;this.delay=500;this.leaseUntil=0;this.timer=null;this.retry=null;}
+    constructor(room,identity){super();this.room=room;this.identity=identity;this.socket=null;this.snapshot=null;this.joined=false;this.stopped=true;this.delay=500;this.leaseUntil=0;this.timer=null;this.retry=null;this.roomPassword='';this.viewerToken='';}
     emit(type,detail){this.dispatchEvent(new CustomEvent(type,{detail}));}
     connect(){
       this.stopped=false;clearTimeout(this.retry);
@@ -17,10 +17,10 @@
       const timeout=setTimeout(()=>{if(!this.joined) ws.close();},10000);
       ws.addEventListener('message',e=>{
         if(ws!==this.socket)return;let m;try{m=JSON.parse(e.data);}catch{return;}
-        if(m.type==='hello') {if(m.protocol!==2)return this.fail('Studio needs the matching room-service update.');ws.send(JSON.stringify({type:'join',...this.identity}));}
-        else if(m.type==='joined'){this.joined=true;this.member=m.member;this.delay=500;this.lastPong=0;clearTimeout(timeout);this.emit('joined',m.member);this.ping();clearInterval(this.timer);this.timer=setInterval(()=>this.ping(),5000);}
+        if(m.type==='hello') {if(m.protocol!==3)return this.fail('Studio needs the matching room-service update.');ws.send(JSON.stringify({type:'join',...this.identity}));}
+        else if(m.type==='joined'){this.joined=true;this.member=m.member;this.roomPassword=m.roomPassword||'';this.viewerToken=m.viewerToken||'';this.delay=500;this.lastPong=0;clearTimeout(timeout);this.emit('joined',m.member);this.ping();clearInterval(this.timer);this.timer=setInterval(()=>this.ping(),5000);}   // 3.1: stash the media secrets delivered per role on join
         else if(m.type==='state'){
-          if(m.protocol!==2)return this.fail('Studio needs the matching room-service update.');
+          if(m.protocol!==3)return this.fail('Studio needs the matching room-service update.');
           this.snapshot=m;this.leaseUntil=Date.now()+Math.max(0,(m.badge.expiresAt||0)-m.serverTime);this.emit('state',m);
         } else if(m.type==='pong') {this.leaseUntil=Date.now()+Math.max(0,(m.expiresAt||0)-m.serverTime);this.lastPong=Date.now();}
         else if(m.type==='replaced')this.fail('This seat was opened in another tab. This tab has stopped publishing.');

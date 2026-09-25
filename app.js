@@ -41,7 +41,8 @@ try {
 
 const state = {
 	room: params.get("room") || params.get("r") || params.get("director") || params.get("dir") || "master_sessions_raw",
-	password: params.get("password") || params.get("pass") || params.get("pw") || "",
+	password: params.get("password") || params.get("pass") || params.get("pw") || "",   // 3.1: fallback only; the live value now arrives from the server on join
+	viewerToken: "",   // 3.1: server-issued; embedded in the scene/OBS link so a viewer is authorized
 	iframeReady: false,
 	sourceSnapshotReady: false,
 	pollTimer: null,
@@ -367,8 +368,12 @@ async function buildInviteUrl() {
 }
 
 function buildSceneUrl(options = {}) {
+ // 3.1: the scene/OBS link no longer carries the raw room password. It carries the viewerToken,
+ // which authorizes the viewer to the worker; the worker then hands that viewer the roomPassword
+ // over the socket. So the copied link never exposes the media key in a URL/access log — but it IS
+ // a secret link (anyone with it can view), which the release note calls out.
  const url=new URL('program.html',location.href);url.searchParams.set('room',state.room);
- if(state.password)url.searchParams.set('password',state.password);
+ if(state.viewerToken)url.searchParams.set('vtoken',state.viewerToken);
  if(options.record)url.searchParams.set('record','1');
  return url.href;
 }
@@ -2085,9 +2090,20 @@ function openUrl(url, statusText = "Output window opened") {
 	}
 }
 
+// 3.1: build (or rebuild) the two receive-side iframes — the VDO director (control + thumbnails +
+// loudness) and the console's own program preview. Both need the room's media key: the director gets
+// it as &password (buildDirectorUrl), the preview gets it by joining as a token-bearing viewer
+// (buildSceneUrl carries the vtoken; program.js is handed the roomPassword over its own socket).
+// Called once at studio start (before the key is known — tiles are black) and again the moment the
+// server delivers the secrets on join, which re-keys both frames onto the encrypted media.
+function buildOutputFrames() {
+	directorFrame.src = buildDirectorUrl();
+	const programURL = new URL(buildSceneUrl()); programURL.searchParams.set('monitor','1');
+	document.getElementById('program-frame').src = programURL.href;
+}
 async function startStudio() {
 	state.room = sanitizeRoomName(roomNameInput.value || state.room);
-	state.password = roomPasswordInput.value || "";
+	// 3.1: the room password is server-generated and delivered on join — no longer typed here.
 	state.sourceSnapshotReady = false;
 	if (!state.room) {
 		roomNameInput.focus();
@@ -2097,23 +2113,29 @@ async function startStudio() {
 	root.dataset.state = "studio";
 	renderAll();
 	setStatus("Loading", "idle");
-	const url = buildDirectorUrl();
-	directorFrame.src = url;
- const programURL=new URL(buildSceneUrl());programURL.searchParams.set('monitor','1');
- document.getElementById('program-frame').src=programURL.href;
+	buildOutputFrames();
+	// Keep only the room in the address bar; the media key never goes in a URL now (3.1).
 	const current = new URL(window.location.href);
 	current.searchParams.set("room", state.room);
-	if (state.password) {
-		current.searchParams.set("password", state.password);
-		current.searchParams.delete("pass");
-		current.searchParams.delete("pw");
-	} else {
-		current.searchParams.delete("password");
-		current.searchParams.delete("pass");
-		current.searchParams.delete("pw");
-	}
+	current.searchParams.delete("password");
+	current.searchParams.delete("pass");
+	current.searchParams.delete("pw");
 	history.replaceState(null, "", current.href);
 }
+// 3.1: the console's crew socket has joined and the server delivered this room's secrets. Adopt the
+// real key, then re-key the director + preview iframes and refresh the scene link / password display.
+window.addEventListener('raw-room-secrets', event => {
+	const { roomPassword, viewerToken } = event.detail || {};
+	if (!roomPassword) return;
+	const changed = roomPassword !== state.password || viewerToken !== state.viewerToken;
+	state.password = roomPassword;
+	state.viewerToken = viewerToken || "";
+	if (roomPasswordInput) roomPasswordInput.value = state.password;
+	if (changed && root.dataset.state === "studio") {
+		buildOutputFrames();
+		try { renderAll(); } catch (e) {}   // refresh #scene-url-top / #scene-link / password display
+	}
+});
 
 function bindEvents() {
 	roomForm.addEventListener("submit", event => {
@@ -2283,9 +2305,15 @@ function bindEvents() {
 
 bindEvents();
 
+// 3.1: the room password is issued by the server on join, so the field is a read-only display now,
+// not an input. It fills in once the crew socket joins (see the raw-room-secrets handler).
+if (roomPasswordInput) {
+	roomPasswordInput.readOnly = true;
+	roomPasswordInput.placeholder = "Set automatically on join";
+	roomPasswordInput.value = state.password;
+}
 if (state.room) {
 	roomNameInput.value = state.room;
-	roomPasswordInput.value = state.password;
 	startStudio();
 } else {
 	roomNameInput.value = "";

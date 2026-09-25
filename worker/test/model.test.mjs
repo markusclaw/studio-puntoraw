@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { HOSTS, initialProgram, sanitizeProgram, controller, nextBadgeHolder, resolveJoinRole } from '../src/model.js';
+import { HOSTS, initialProgram, sanitizeProgram, controller, nextBadgeHolder, resolveJoinRole, makeSecrets, socketAuthed } from '../src/model.js';
 
 const crew = (id, seat, joinedAt, ready = true) => ({ id, role: 'crew', ready, seat, joinedAt });
 
@@ -153,4 +153,43 @@ test('mixer: exactly 3 host channels + admitted guests + master, no label-driven
   assert.equal(hostChannels.length, 3);                       // never 4
   assert.equal(chs.filter(c => c.name === 'Greg').length, 1); // no duplicate Greg strip
   assert.deepEqual(chs.map(c => c.slot), [1, 2, 3, 4, 'master']); // stray non-admitted peer excluded
+});
+
+// 3.1 media-layer auth — makeSecrets mints URL-safe hex secrets, distinct per room.
+test('makeSecrets: roomPassword 32-hex, viewerToken 64-hex, all URL-safe', () => {
+  const s = makeSecrets();
+  assert.match(s.roomPassword, /^[0-9a-f]{32}$/);
+  assert.match(s.viewerToken, /^[0-9a-f]{64}$/);
+});
+
+test('makeSecrets: two rooms get different secrets', () => {
+  const a = makeSecrets(), b = makeSecrets();
+  assert.notEqual(a.roomPassword, b.roomPassword);
+  assert.notEqual(a.viewerToken, b.viewerToken);
+  assert.notEqual(a.roomPassword, a.viewerToken);
+});
+
+// 3.1 — socketAuthed is the single gate deciding who receives streamIDs + the roomPassword.
+test('socketAuthed: crew is always authorized', () => {
+  assert.equal(socketAuthed({ role: 'crew', id: 'g' }, {}), true);
+});
+
+test('socketAuthed: a guest is authorized only once admitted', () => {
+  const guests = { guest1: { admitted: true }, guest2: { admitted: false }, guest3: { denied: true } };
+  assert.equal(socketAuthed({ role: 'guest', id: 'guest1' }, guests), true);
+  assert.equal(socketAuthed({ role: 'guest', id: 'guest2' }, guests), false); // knocking, not admitted
+  assert.equal(socketAuthed({ role: 'guest', id: 'guest3' }, guests), false); // denied
+  assert.equal(socketAuthed({ role: 'guest', id: 'ghost' }, guests), false);  // unknown id
+});
+
+test('socketAuthed: a viewer is authorized only with a validated token', () => {
+  assert.equal(socketAuthed({ role: 'viewer', viewerAuthed: true }, {}), true);
+  assert.equal(socketAuthed({ role: 'viewer', viewerAuthed: false }, {}), false);
+  assert.equal(socketAuthed({ role: 'viewer' }, {}), false); // no token presented
+});
+
+test('socketAuthed: pending / unknown / null sockets get nothing', () => {
+  assert.equal(socketAuthed({ pending: true }, {}), false);
+  assert.equal(socketAuthed(null, {}), false);
+  assert.equal(socketAuthed(undefined, undefined), false); // no guests map, no throw
 });

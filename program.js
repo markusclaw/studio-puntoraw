@@ -1,7 +1,10 @@
 /* A read-only renderer shared by the console preview and OBS Browser Source. */
 (function(){
  const p=new URLSearchParams(location.search),room=p.get('room')||'master_sessions_raw',monitor=p.has('monitor');
- const client=new RawRoomClient(room,{id:crypto.randomUUID(),token:crypto.randomUUID(),viewer:true});
+ // 3.1: join as a viewer carrying the viewerToken from the scene/OBS URL. A valid token authorizes
+ // this viewer, so the worker sends it the streamIDs + the roomPassword (captured on client.roomPassword);
+ // without it we join but receive no streamIDs and no key, so only the branded standby screen renders.
+ const client=new RawRoomClient(room,{id:crypto.randomUUID(),token:crypto.randomUUID(),viewer:true,vtoken:p.get('vtoken')||''});
  const container=document.getElementById('program'),standby=document.getElementById('standby'),message=document.getElementById('standby-message');
  const tiles=new Map();let snapshot=null,offline=true,solo=null,interrupted=false,fatalMsg='',offlineTimer=null,sbAudio=null;
  // Watchdog thresholds. A viewer that never produces a first frame, or whose decoded-frame
@@ -70,7 +73,7 @@
    tile.frames=-1;tile.framesAt=Date.now();tile.remountAt=Date.now();
    tile.volAt=0;tile.lastGain=null;tile.lastMuted=null;   // audit 2.6: reset the volume cache so the new iframe is (re)addressed on load
    const q=new URLSearchParams({room,view:streamID,solo:'1',cleanoutput:'',autostart:'',speakermute:'',transparent:'',cover:box.cover===false?'0':'1'});
-   if(p.get('password'))q.set('password',p.get('password'));
+   if(client.roomPassword)q.set('password',client.roomPassword);   // 3.1: the room key comes from the server (on join), never from the URL
    // The console's own preview pane is a monitor, not the OBS output: ask the publisher for a
    // lighter stream so each host's upload (VDO is peer-to-peer) isn't multiplied at full rate.
    // audit 2.7: 1200→500 kbps and drop audio entirely (the monitor is force-muted anyway, and

@@ -45,3 +45,25 @@ export function resolveJoinRole(m, hosts) {
   if (m.seat && !m.viewer && !host) return { error: 'unknown-seat' };
   return { role: m.viewer ? 'viewer' : host ? 'crew' : 'guest', host };
 }
+
+// 3.1 media-layer auth: the room's two server-generated secrets. roomPassword is the VDO room
+// encryption key (everyone who publishes OR views the media must carry it); viewerToken is the
+// bearer token embedded in the OBS/scene link that proves a viewer is authorized. Both are random
+// hex so they are URL-safe and never need escaping. Generated once per room and persisted.
+export function makeSecrets() {
+  const hex = () => crypto.randomUUID().replaceAll('-', '');
+  return { roomPassword: hex(), viewerToken: hex() + hex() };   // 32 / 64 hex chars
+}
+
+// 3.1: which sockets may receive stream IDs (in `state`) and the roomPassword (on `joined`).
+// Crew always; a guest only once admitted; a viewer only if it presented a valid viewerToken
+// (recorded as attachment.viewerAuthed at join). Everyone else — pending, denied, unauthed
+// viewer — gets neither, so a stranger who opens the socket learns no streamID to view with.
+// Pure (guests map passed in) so it is unit-tested directly.
+export function socketAuthed(attachment, guests) {
+  if (!attachment) return false;
+  if (attachment.role === 'crew') return true;
+  if (attachment.role === 'guest') return !!guests?.[attachment.id]?.admitted;
+  if (attachment.role === 'viewer') return !!attachment.viewerAuthed;
+  return false;
+}

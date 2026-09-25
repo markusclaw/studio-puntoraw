@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
-import { HOSTS, LEASE_MS, PRESENCE_MS, initialProgram, sanitizeProgram, controller, nextBadgeHolder, resolveJoinRole } from './model.js';
+import { HOSTS, LEASE_MS, PRESENCE_MS, initialProgram, sanitizeProgram, controller, nextBadgeHolder, resolveJoinRole, makeSecrets, socketAuthed } from './model.js';
 
 const ALARM_MS = 10000; // reconcile/presence cadence. Presence 30s, lease 20s tolerate this; 10s ~halves alarm-driven DO requests vs 5s.
 
@@ -9,9 +9,16 @@ export class RawStudioRoom extends DurableObject {
     super(ctx,env); this.env=env; this.program=initialProgram(); this.badge={hostId:null,term:0,expiresAt:0};
     this.guests={}; this.seats={};
     this._saved={}; // JSON of last-written value per key, for change detection in persist()
+    this.secrets={roomPassword:'',viewerToken:''};
     ctx.blockConcurrencyWhile(async()=>{
       this.program=await ctx.storage.get('program-v2') || initialProgram();
       if(!this.program.episode) this.program.episode={season:'',number:'',title:''};   // audit/feature: episode metadata added later; backfill for rooms persisted before it existed
+      // 3.1: the room's media secrets. Generate once and write them DURABLY here (before the
+      // change-cache is primed below), so a legacy room gets keys on first post-deploy connection
+      // and — critically — an evicted-then-rewoken DO reloads the SAME keys instead of minting new
+      // ones (which would silently re-key the room and break every live OBS/scene link).
+      this.secrets=await ctx.storage.get('secrets-v1') || null;
+      if(!this.secrets){ this.secrets=makeSecrets(); await ctx.storage.put('secrets-v1',this.secrets); }
       // Persisted badge/guests/seats carry only durable fields; rolling fields
       // (lease expiry, presence timestamps) are rebuilt here so they never drive writes.
       const b=await ctx.storage.get('badge-v2'); this.badge=b?{hostId:b.hostId,term:b.term||0,expiresAt:0}:this.badge;
@@ -31,6 +38,7 @@ export class RawStudioRoom extends DurableObject {
   _normalized() {
     return {
       'program-v2':this.program,
+      'secrets-v1':this.secrets,
       'badge-v2':{hostId:this.badge.hostId,term:this.badge.term},
       'guests-v2':Object.fromEntries(Object.entries(this.guests).map(([k,g])=>[k,{token:g.token,slot:g.slot,streamID:g.streamID,admitted:!!g.admitted,denied:!!g.denied}])),
       'seats-v2':Object.fromEntries(Object.entries(this.seats).map(([k,s])=>[k,{id:s.id,token:s.token,streamID:s.streamID}]))
@@ -69,11 +77,18 @@ export class RawStudioRoom extends DurableObject {
     await this.ctx.storage.setAlarm(Date.now()+ALARM_MS);
     return changed;
   }
-  stateMsg() {
-    return {type:'state',protocol:2,badge:this.badge,members:this.members(),program:this.program,serverTime:Date.now()};
+  // 3.1: the `state` payload is now built PER SOCKET, because different sockets are entitled to
+  // different data. An authorized socket (crew / admitted guest / token-bearing viewer) gets the
+  // full members list with streamIDs; everyone else gets the same list with streamID stripped, so
+  // an unauthorized watcher never learns an ID to view with. The program itself carries no
+  // streamIDs (sanitizeProgram forces layout streamID=''), so only the members list needs gating.
+  stateFor(a) {
+    const authed=socketAuthed(a,this.guests);
+    const members=authed ? this.members() : this.members().map(({streamID,...rest})=>rest);
+    return {type:'state',protocol:3,badge:this.badge,members,program:this.program,serverTime:Date.now()};
   }
   send(ws,msg) { try{ws.send(JSON.stringify(msg));}catch{} }
-  broadcast() { for(const ws of this.ctx.getWebSockets()) if(!ws.deserializeAttachment()?.closed) this.send(ws,this.stateMsg()); }
+  broadcast() { for(const ws of this.ctx.getWebSockets()){ const a=ws.deserializeAttachment(); if(a?.closed)continue; this.send(ws,this.stateFor(a)); } }
   error(ws,code,message) { this.send(ws,{type:'error',code,message}); }
   async fetch(request) {
     if(request.headers.get('Upgrade')?.toLowerCase()!=='websocket') return new Response('Expected WebSocket',{status:426});
@@ -82,7 +97,7 @@ export class RawStudioRoom extends DurableObject {
     const pair=new WebSocketPair(), ws=pair[1]; this.ctx.acceptWebSocket(ws);
     // Authenticate in the first message: no codes/tokens in URLs or access logs.
     ws.serializeAttachment({pending:true,lastSeen:Date.now()});
-    this.send(ws,{type:'hello',protocol:2});
+    this.send(ws,{type:'hello',protocol:3});
     await this.ctx.storage.setAlarm(Date.now()+ALARM_MS);
     return new Response(null,{status:101,webSocket:pair[0]});
   }
@@ -107,12 +122,24 @@ export class RawStudioRoom extends DurableObject {
     if(role==='guest' && !slot) return this.error(ws,'full','No guest seats available');
     const streamID=existing?.streamID || (reservation?.id===m.id && reservation?.token===m.token ? reservation.streamID : null) || saved?.streamID || 'raw_'+crypto.randomUUID().replaceAll('-','');
     const a={id:m.id,token:m.token,name:host?.name||String(m.name||'Guest').trim().slice(0,60),role,seat:host?.seat||'',slot:slot||0,streamID,ready:role==='viewer'?false:!!m.ready,joinedAt:existing?.joinedAt||Date.now(),lastSeen:Date.now(),closed:false};
+    // 3.1: a viewer (OBS scene output / console preview) proves authorization with the viewerToken
+    // carried in its URL. A valid token marks the socket authed, so it receives streamIDs + the
+    // roomPassword; a missing/wrong token still joins but stays unauthed (branded screen, no video).
+    if(role==='viewer') a.viewerAuthed = !!(m.vtoken && m.vtoken===this.secrets.viewerToken);
     if(existing) { existing.ws.serializeAttachment({...existing.ws.deserializeAttachment(),closed:true}); this.send(existing.ws,{type:'replaced'}); try{existing.ws.close(4001,'Session replaced');}catch{} }
     ws.serializeAttachment(a);
     if(host) this.seats[host.seat]={id:m.id,token:m.token,streamID,until:Date.now()+PRESENCE_MS};
     if(role==='guest') this.guests[m.id]={token:m.token,slot,streamID,admitted:!!saved?.admitted,seenAt:Date.now()};
     await this.reconcile(); await this.persist();
-    this.send(ws,{type:'joined',member:{...a,token:undefined},protocol:2}); this.broadcast();
+    // 3.1: hand each party exactly the secrets its role needs. Crew get both (they publish with the
+    // roomPassword and mint scene links with the viewerToken). Guests get the roomPassword to publish
+    // their cam into the encrypted room. An authed viewer gets the roomPassword to decode the feeds.
+    // An unauthed viewer gets nothing. Publishers also read streamID from their own `joined` member,
+    // so gating the members list never blocks a party from publishing itself.
+    const grant = role==='crew' ? {roomPassword:this.secrets.roomPassword,viewerToken:this.secrets.viewerToken}
+      : role==='guest' ? {roomPassword:this.secrets.roomPassword}
+      : (a.viewerAuthed ? {roomPassword:this.secrets.roomPassword} : {});
+    this.send(ws,{type:'joined',member:{...a,token:undefined},protocol:3,...grant}); this.broadcast();
   }
   async webSocketMessage(ws,raw) {
     if(typeof raw!=='string' || raw.length>100000) return;
@@ -147,7 +174,7 @@ export class RawStudioRoom extends DurableObject {
       { const g=this.guests[m.target]; g.admitted=m.type==='admit'; g.denied=m.type==='deny'; }   // audit 4.6: track denied so a removed/denied guest shows "not admitted", not "waiting"
     } else if(m.type==='program') {
       if(!owns) return this.error(ws,'forbidden','Control changed. Your change was not applied.');
-      if(m.revision!==this.program.revision) { this.send(ws,this.stateMsg()); return this.error(ws,'conflict','The room changed. Retry your change.'); }
+      if(m.revision!==this.program.revision) { this.send(ws,this.stateFor(a)); return this.error(ws,'conflict','The room changed. Retry your change.'); }
       try { this.program={...sanitizeProgram(m.program,this.program),revision:this.program.revision+1}; }
       catch(e){return this.error(ws,'invalid',e.message);}
     } else if(m.type==='mix') {
@@ -194,7 +221,7 @@ export class RawStudioRoom extends DurableObject {
 }
 export default { async fetch(request,env) {
   const path=new URL(request.url).pathname;
-  if(path==='/health') return Response.json({ok:true,protocol:2});
+  if(path==='/health') return Response.json({ok:true,protocol:3});
   const match=path.match(/^\/room\/([A-Za-z0-9_.-]{1,80})$/);
   if(!match) return new Response('Not found',{status:404});
   return env.RAW_ROOM.get(env.RAW_ROOM.idFromName(match[1])).fetch(request);

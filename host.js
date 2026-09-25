@@ -157,7 +157,12 @@ function connectSocket() {
   let seat=''; try{seat=sessionStorage.getItem('raw.host.seat')||'';}catch{}
   const client=new window.RawRoomClient(room,{...session,name:runtime.name,seat,code:runtime.code,ready:true});
   runtime.client=client; runtime.clientId=session.id;
-  client.addEventListener('joined',()=>{runtime.connected=true;window.__rawAutoEntering=false;render();});
+  client.addEventListener('joined',()=>{runtime.connected=true;window.__rawAutoEntering=false;
+    // 3.1: the server delivered this room's media secrets on join. Stash them and tell the console so
+    // it can key the director iframe + preview and mint token-bearing scene links.
+    runtime.roomPassword=client.roomPassword;runtime.viewerToken=client.viewerToken;
+    window.dispatchEvent(new CustomEvent('raw-room-secrets',{detail:{roomPassword:client.roomPassword,viewerToken:client.viewerToken}}));
+    render();});
   client.addEventListener('state',e=>{
     runtime.connected=client.joined; runtime.badge=e.detail.badge; runtime.members=e.detail.members;
     window.dispatchEvent(new CustomEvent('raw-room-state',{detail:e.detail})); render();
